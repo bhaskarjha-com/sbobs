@@ -43,18 +43,36 @@ If you see errors instead, check the [FAQ](faq.md).
 
 ---
 
-## Step 3: Create Text Sources
+## Step 3: Quick Setup (Recommended) 🚀
 
-SessionPulse needs OBS **Text sources** to display the timer. You need to create these in your scene first, then tell the script which ones to use.
+Click **one button** and SessionPulse creates everything for you:
 
-### Create a timer display source:
+1. In the script settings panel (right side), click **🚀 Quick Setup**
+2. Done.
 
-1. In your **Scene**, click **+** (under Sources)
-2. Select **Text (GDI+)** (Windows) or **Text (FreeType 2)** (Mac/Linux)
-3. Name it something like `Timer`
-4. Click **OK** on the properties (don't worry about the text — the script will control it)
+This automatically:
+- ✅ Creates 4 text sources (`SP Timer`, `SP Session`, `SP Count`, `SP Progress`)
+- ✅ Creates a ring overlay Browser Source (`SP Overlay`)
+- ✅ Creates two scenes (`SP Focus` and `SP Break`) with all sources positioned
+- ✅ Wires all sources to the script dropdowns
+- ✅ Enables scene switching between Focus and Break scenes
+- ✅ Switches you to the Focus scene
 
-### Recommended sources to create:
+Check the Script Log to confirm:
+```
+[SessionPulse] Quick Setup: ✓ Complete! Created 7 items. Press Start to begin!
+```
+
+> **Skip to [Step 4: Set Up Hotkeys](#step-4-set-up-hotkeys)** — sources, scenes, and overlay are ready.
+
+---
+
+<details>
+<summary><strong>Alternative: Manual Setup</strong> (if you prefer to create sources yourself)</summary>
+
+### Create Text Sources
+
+Create these in your scene before configuring the script:
 
 | Source Name | Purpose | Required? |
 |------------|---------|-----------|
@@ -63,30 +81,25 @@ SessionPulse needs OBS **Text sources** to display the timer. You need to create
 | `Focus Count` | Shows `Done: 3/6` | Optional |
 | `Progress` | Shows `████░░░░` bar | Optional |
 
-> You can name them anything — you'll pick them from dropdown menus in the next step.
+1. In your **Scene**, click **+** (under Sources)
+2. Select **Text (GDI+)** (Windows) or **Text (FreeType 2)** (Mac/Linux)
+3. Name it and click **OK**
+4. Repeat for each source
 
----
-
-## Step 4: Connect Sources to the Script
+### Connect Sources to the Script
 
 1. Go to **Tools** → **Scripts** → select **SessionPulse**
-2. In the script settings panel on the right, you'll see dropdown menus:
-   - **Timer Display** → select your `Timer` text source
-   - **Session Message** → select your `Session` text source
-   - **Focus Count** → select your `Focus Count` text source
-   - **Progress Bar** → select your `Progress` text source
-3. The dropdowns show all text sources in your current scene
+2. In the script settings panel, use the dropdown menus:
+   - **Timer Text Source** → select your timer source
+   - **Session Message Source** → select your session source
+   - **Focus Count Source** → select your count source
+   - **Progress Bar Source** → select your progress source
 
-```mermaid
-flowchart LR
-    A[Create Text Sources\nin your Scene] --> B[Open Script Settings\nTools → Scripts]
-    B --> C[Pick sources from\ndropdown menus]
-    C --> D[Press a hotkey\nto start!]
-```
+</details>
 
 ---
 
-## Step 5: Set Up Hotkeys
+## Step 4: Set Up Hotkeys
 
 SessionPulse uses OBS hotkeys to control the timer. Set them up:
 
@@ -112,7 +125,7 @@ Optional but useful:
 
 ---
 
-## Step 6: Start Your First Session
+## Step 5: Start Your First Session
 
 1. Press your **Start/Pause** hotkey (e.g., `F9`)
 2. Watch: your `Timer` source should start counting down from `25:00`
@@ -129,7 +142,7 @@ Focus (25 min) → Short Break (5 min) → Focus → Short Break → Focus → S
 
 ---
 
-## Step 7: Add the Overlay (Optional but Recommended)
+## Step 6: Add the Overlay (Optional)
 
 The ring overlay adds a beautiful visual timer to your stream:
 
@@ -147,7 +160,7 @@ You should see a circular ring with the countdown timer. It will be green during
 
 ---
 
-## Step 8: Add the Control Dock (Optional)
+## Step 7: Add the Control Dock (Optional)
 
 The dock gives you clickable buttons inside OBS instead of using hotkeys:
 

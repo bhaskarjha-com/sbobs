@@ -23,10 +23,10 @@
 ```
 1. Clone or download this folder
 2. OBS → Tools → Scripts → + → select session_pulse.lua
-3. Pick your text sources from the dropdowns. Done.
+3. Click "🚀 Quick Setup" — sources, scenes, and overlay created automatically
+4. Set hotkeys (Settings → Hotkeys → search "SessionPulse")
+5. Press Start. Done.
 ```
-
-Optional: Add `timer_overlay.html` as a Browser Source for a visual ring overlay.
 
 > **New to OBS scripting?** Read the [Getting Started Guide](docs/getting-started.md) — it walks through every click.
 

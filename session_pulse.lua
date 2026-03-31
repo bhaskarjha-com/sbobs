@@ -1625,6 +1625,210 @@ local function populate_scene_list(prop)
 end
 
 ------------------------------------------------------------------------
+-- Quick Setup Wizard
+------------------------------------------------------------------------
+local quick_setup_settings = nil   -- reference to current settings, set by script_update
+
+local function get_text_source_id()
+    -- Windows: text_gdiplus, Mac/Linux: text_ft2_source
+    local sep = package.config:sub(1, 1)
+    if sep == "\\" then
+        return "text_gdiplus"
+    else
+        return "text_ft2_source"
+    end
+end
+
+local function source_exists(name)
+    local source = obs.obs_get_source_by_name(name)
+    if source then
+        obs.obs_source_release(source)
+        return true
+    end
+    return false
+end
+
+local function create_text_source(name, initial_text, font_size)
+    if source_exists(name) then
+        log("Quick Setup: '" .. name .. "' already exists, skipping")
+        return false
+    end
+
+    local text_id = get_text_source_id()
+    local settings = obs.obs_data_create()
+    obs.obs_data_set_string(settings, "text", initial_text)
+
+    -- Font settings
+    local font = obs.obs_data_create()
+    obs.obs_data_set_string(font, "face", "Arial")
+    obs.obs_data_set_int(font, "size", font_size or 48)
+    obs.obs_data_set_int(font, "flags", 0)
+    obs.obs_data_set_obj(settings, "font", font)
+    obs.obs_data_release(font)
+
+    -- White text
+    obs.obs_data_set_int(settings, "color", 0xFFFFFF)
+
+    local source = obs.obs_source_create(text_id, name, settings, nil)
+    obs.obs_data_release(settings)
+
+    if source then
+        obs.obs_source_release(source)
+        log("Quick Setup: Created '" .. name .. "'")
+        return true
+    else
+        log("Quick Setup: Failed to create '" .. name .. "'")
+        return false
+    end
+end
+
+local function create_browser_source(name, file_path, width, height)
+    if source_exists(name) then
+        log("Quick Setup: '" .. name .. "' already exists, skipping")
+        return false
+    end
+
+    local settings = obs.obs_data_create()
+    obs.obs_data_set_bool(settings, "is_local_file", true)
+    obs.obs_data_set_string(settings, "local_file", file_path)
+    obs.obs_data_set_int(settings, "width", width)
+    obs.obs_data_set_int(settings, "height", height)
+    obs.obs_data_set_bool(settings, "shutdown", false)
+
+    local source = obs.obs_source_create("browser_source", name, settings, nil)
+    obs.obs_data_release(settings)
+
+    if source then
+        obs.obs_source_release(source)
+        log("Quick Setup: Created '" .. name .. "'")
+        return true
+    else
+        log("Quick Setup: Failed to create '" .. name .. "'")
+        return false
+    end
+end
+
+local function add_source_to_scene(scene, source_name, x, y)
+    local source = obs.obs_get_source_by_name(source_name)
+    if not source then return end
+
+    local item = obs.obs_scene_add(scene, source)
+    if item then
+        local pos = obs.vec2()
+        pos.x = x
+        pos.y = y
+        obs.obs_sceneitem_set_pos(item, pos)
+    end
+    obs.obs_source_release(source)
+end
+
+local function quick_setup(props, p)
+    log("Quick Setup: Starting automated setup...")
+
+    local created_count = 0
+    local skipped_count = 0
+
+    -- ── 1. Create text sources ──
+    local sources = {
+        { name = "SP Timer",    text = "25:00",       size = 72 },
+        { name = "SP Session",  text = "Focus",       size = 36 },
+        { name = "SP Count",    text = "0/6",         size = 24 },
+        { name = "SP Progress", text = "░░░░░░░░░░",  size = 20 },
+    }
+
+    for _, s in ipairs(sources) do
+        if create_text_source(s.name, s.text, s.size) then
+            created_count = created_count + 1
+        else
+            skipped_count = skipped_count + 1
+        end
+    end
+
+    -- ── 2. Create overlay browser source ──
+    local overlay_path = script_path() .. "timer_overlay.html"
+    if create_browser_source("SP Overlay", overlay_path, 220, 220) then
+        created_count = created_count + 1
+    else
+        skipped_count = skipped_count + 1
+    end
+
+    -- ── 3. Create Focus and Break scenes ──
+    local scenes_to_create = {
+        { name = "SP Focus", label = "Focus scene" },
+        { name = "SP Break", label = "Break scene" },
+    }
+
+    for _, sc in ipairs(scenes_to_create) do
+        if not source_exists(sc.name) then
+            local scene = obs.obs_scene_create(sc.name)
+            if scene then
+                -- Add text sources
+                add_source_to_scene(scene, "SP Session",  700, 300)
+                add_source_to_scene(scene, "SP Timer",    700, 350)
+                add_source_to_scene(scene, "SP Count",    700, 450)
+                add_source_to_scene(scene, "SP Progress", 700, 490)
+
+                -- Add overlay in top-left
+                add_source_to_scene(scene, "SP Overlay", 30, 30)
+
+                obs.obs_scene_release(scene)
+                log("Quick Setup: Created scene '" .. sc.name .. "' with sources")
+                created_count = created_count + 1
+            end
+        else
+            log("Quick Setup: Scene '" .. sc.name .. "' already exists, skipping")
+            skipped_count = skipped_count + 1
+        end
+    end
+
+    -- ── 4. Auto-assign sources to script settings ──
+    if quick_setup_settings then
+        obs.obs_data_set_string(quick_setup_settings, "time_source", "SP Timer")
+        obs.obs_data_set_string(quick_setup_settings, "message_source", "SP Session")
+        obs.obs_data_set_string(quick_setup_settings, "focus_count_source", "SP Count")
+        obs.obs_data_set_string(quick_setup_settings, "progress_bar_source", "SP Progress")
+
+        -- Auto-configure scene switching
+        obs.obs_data_set_bool(quick_setup_settings, "enable_scene_switching", true)
+        obs.obs_data_set_string(quick_setup_settings, "focus_scene", "SP Focus")
+        obs.obs_data_set_string(quick_setup_settings, "short_break_scene", "SP Break")
+        obs.obs_data_set_string(quick_setup_settings, "long_break_scene", "SP Break")
+
+        -- Apply the settings immediately
+        time_source = "SP Timer"
+        message_source = "SP Session"
+        focus_count_source = "SP Count"
+        progress_bar_source = "SP Progress"
+        enable_scene_switching = true
+        focus_scene = "SP Focus"
+        short_break_scene = "SP Break"
+        long_break_scene = "SP Break"
+
+        log("Quick Setup: Auto-assigned sources and scenes to settings")
+    end
+
+    -- ── 5. Switch to Focus scene ──
+    local focus_scene_source = obs.obs_get_source_by_name("SP Focus")
+    if focus_scene_source then
+        obs.obs_frontend_set_current_scene(focus_scene_source)
+        obs.obs_source_release(focus_scene_source)
+        log("Quick Setup: Switched to SP Focus scene")
+    end
+
+    -- ── 6. Report results ──
+    if created_count > 0 and skipped_count == 0 then
+        log("Quick Setup: ✓ Complete! Created " .. created_count .. " items. Press Start to begin!")
+    elseif created_count > 0 then
+        log("Quick Setup: ✓ Created " .. created_count .. " items, skipped " .. skipped_count .. " (already existed)")
+    else
+        log("Quick Setup: All items already exist (" .. skipped_count .. " skipped). Setup was already done.")
+    end
+
+    -- Refresh the properties UI to reflect new settings
+    return true
+end
+
+------------------------------------------------------------------------
 -- OBS Script Interface
 ------------------------------------------------------------------------
 function script_description()
@@ -1632,9 +1836,14 @@ function script_description()
         " — Session automation engine for OBS Studio."
 end
 
+
 function script_properties()
     local props = obs.obs_properties_create()
     local p
+
+    -- ── Quick Setup ──
+    obs.obs_properties_add_button(props, "quick_setup_button",
+        "🚀  Quick Setup (auto-create sources, scenes, overlay)", quick_setup)
 
     -- ── Controls ──
     obs.obs_properties_add_button(props, "start_button", "▶  Start", start_timer)
@@ -1948,6 +2157,7 @@ local function update_source_config(settings)
 end
 
 function script_update(settings)
+    quick_setup_settings = settings   -- allow Quick Setup to write source assignments
     update_timer_config(settings)
     update_automation_config(settings)
     update_source_config(settings)
