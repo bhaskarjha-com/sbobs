@@ -102,6 +102,18 @@
     background: rgba(71, 85, 105, 0.2);
     color: var(--text-muted);
   }
+  .session-badge.stopwatch {
+    background: rgba(245, 158, 11, 0.15);
+    color: #f59e0b;
+  }
+  .session-badge.countdown {
+    background: rgba(249, 115, 22, 0.15);
+    color: #f97316;
+  }
+  .session-badge.custom {
+    background: rgba(34, 197, 94, 0.15);
+    color: var(--focus-color);
+  }
 
   .time-display {
     font-size: 2.4rem;
@@ -133,6 +145,9 @@
   .progress-fill.focus { background: var(--focus-color); }
   .progress-fill.short-break { background: var(--short-break-color); }
   .progress-fill.long-break { background: var(--long-break-color); }
+  .progress-fill.stopwatch { background: #f59e0b; }
+  .progress-fill.countdown { background: #f97316; }
+  .progress-fill.custom { background: var(--focus-color); }
   .progress-fill.idle { background: var(--idle-color); }
 
   /* ── Transition Message ── */
@@ -305,9 +320,10 @@ function update(state) {
 
   const { is_running, is_paused, session_type, current_time, total_time,
           completed_focus_sessions, goal_sessions, total_focus_seconds,
-          cycle_count, show_transition, transition_message } = state;
+          cycle_count, show_transition, transition_message, timer_mode,
+          custom_segment_name, custom_segment_index, custom_segment_count } = state;
 
-  const cls = BADGE_CLASSES[session_type] || 'idle';
+  const mode = timer_mode || 'pomodoro';
 
   // Status dot
   if (is_running && !is_paused) {
@@ -323,19 +339,36 @@ function update(state) {
   timeEl.className = is_running ? 'time-display' : 'time-display idle';
 
   // Badge
-  if (is_paused) {
-    badgeEl.textContent = session_type + ' · Paused';
-  } else if (is_running) {
-    badgeEl.textContent = session_type;
-  } else {
-    badgeEl.textContent = 'Ready';
+  let badgeText = session_type || 'Ready';
+  let badgeCls = BADGE_CLASSES[session_type] || 'idle';
+
+  if (mode === 'stopwatch') {
+    badgeText = 'Stopwatch';
+    badgeCls = 'stopwatch';
+  } else if (mode === 'countdown') {
+    badgeText = 'Countdown';
+    badgeCls = 'countdown';
+  } else if (mode === 'custom' && custom_segment_name) {
+    badgeText = custom_segment_name;
+    badgeCls = 'custom';
   }
-  badgeEl.className = 'session-badge ' + (is_running ? cls : 'idle');
+
+  if (is_paused) badgeText += ' · Paused';
+  if (!is_running) { badgeText = 'Ready'; badgeCls = 'idle'; }
+  badgeEl.textContent = badgeText;
+  badgeEl.className = 'session-badge ' + badgeCls;
 
   // Progress bar
-  const progress = total_time > 0 ? ((total_time - current_time) / total_time) * 100 : 0;
+  let progress = 0;
+  let fillCls = badgeCls;
+  if (mode === 'stopwatch') {
+    progress = ((current_time % 3600) / 3600) * 100;
+  } else if (total_time > 0) {
+    progress = ((total_time - current_time) / total_time) * 100;
+  }
+  if (!is_running) fillCls = 'idle';
   progressFill.style.width = progress + '%';
-  progressFill.className = 'progress-fill ' + (is_running ? cls : 'idle');
+  progressFill.className = 'progress-fill ' + fillCls;
 
   // Transition message
   if (show_transition && transition_message) {
@@ -345,10 +378,18 @@ function update(state) {
     transEl.classList.remove('visible');
   }
 
-  // Stats
-  sessionsEl.textContent = `${completed_focus_sessions || 0}/${goal_sessions || 0}`;
+  // Stats (mode-aware)
+  if (mode === 'pomodoro') {
+    sessionsEl.textContent = `${completed_focus_sessions || 0}/${goal_sessions || 0}`;
+    cycleEl.textContent = cycle_count || 0;
+  } else if (mode === 'custom') {
+    sessionsEl.textContent = `${custom_segment_index || 1}/${custom_segment_count || 0}`;
+    cycleEl.textContent = '-';
+  } else {
+    sessionsEl.textContent = '-';
+    cycleEl.textContent = '-';
+  }
   focusTimeEl.textContent = formatDuration(total_focus_seconds);
-  cycleEl.textContent = cycle_count || 0;
   elapsedEl.textContent = Math.round(progress) + '%';
 }
 

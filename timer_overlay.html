@@ -235,7 +235,10 @@ function update(state) {
 
   const { is_running, is_paused, session_type, current_time, total_time,
           completed_focus_sessions, goal_sessions, total_focus_seconds,
-          show_transition, transition_message } = state;
+          show_transition, transition_message, timer_mode,
+          custom_segment_name, custom_segment_index, custom_segment_count } = state;
+
+  const mode = timer_mode || 'pomodoro';
 
   // Container state classes
   if (!is_running) {
@@ -250,31 +253,51 @@ function update(state) {
   timeEl.textContent = formatTime(current_time);
 
   // Session label
-  if (is_paused) {
-    labelEl.textContent = session_type + ' · Paused';
-  } else if (is_running) {
-    labelEl.textContent = session_type;
-  } else {
-    labelEl.textContent = 'Ready';
+  let label = session_type || 'Ready';
+  if (mode === 'custom' && custom_segment_name) {
+    label = custom_segment_name;
+  } else if (mode === 'stopwatch') {
+    label = 'Stopwatch';
+  } else if (mode === 'countdown') {
+    label = 'Countdown';
   }
+  if (is_paused) label += ' · Paused';
+  if (!is_running) label = 'Ready';
+  labelEl.textContent = label;
 
   // Progress ring
-  const progress = total_time > 0 ? (total_time - current_time) / total_time : 0;
-  const offset = CIRCUMFERENCE * (1 - progress);
-  ring.style.strokeDashoffset = offset;
+  let progress = 0;
+  if (mode === 'stopwatch') {
+    // Continuous rotation — fills over 60 minutes then resets
+    progress = (current_time % 3600) / 3600;
+  } else if (total_time > 0) {
+    progress = (total_time - current_time) / total_time;
+  }
+  ring.style.strokeDashoffset = CIRCUMFERENCE * (1 - Math.max(0, Math.min(1, progress)));
 
-  // Colors
-  const palette = COLORS[session_type] || { color: '#64748b', glow: 'rgba(100,116,139,0.2)' };
+  // Colors — extended for new modes
+  const EXTRA_COLORS = {
+    'Stopwatch': { color: '#f59e0b', glow: 'rgba(245,158,11,0.25)' },
+    'Countdown': { color: '#f97316', glow: 'rgba(249,115,22,0.25)' },
+  };
+  let palette = COLORS[session_type] || EXTRA_COLORS[session_type] || EXTRA_COLORS[label] || { color: '#22c55e', glow: 'rgba(34,197,94,0.25)' };
+  if (mode === 'stopwatch') palette = EXTRA_COLORS['Stopwatch'];
+  if (mode === 'countdown') palette = EXTRA_COLORS['Countdown'];
+
   ring.style.stroke = is_running ? palette.color : '#64748b';
   labelEl.style.color = is_running ? palette.color : 'rgba(241,245,249,0.6)';
   glowEl.style.background = palette.glow;
   glowEl.classList.toggle('active', is_running && !is_paused);
 
   // Stats
-  if (is_running || completed_focus_sessions > 0) {
+  if (mode === 'pomodoro' && (is_running || completed_focus_sessions > 0)) {
     let stat = `${completed_focus_sessions}/${goal_sessions}`;
     if (total_focus_seconds > 0) stat += ` · ${formatDuration(total_focus_seconds)}`;
     statsEl.textContent = stat;
+  } else if (mode === 'custom' && custom_segment_count > 0) {
+    statsEl.textContent = `${custom_segment_index || 1}/${custom_segment_count}`;
+  } else if (mode === 'stopwatch' && total_focus_seconds > 0) {
+    statsEl.textContent = formatDuration(total_focus_seconds);
   } else {
     statsEl.textContent = '';
   }

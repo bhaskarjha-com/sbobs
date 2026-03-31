@@ -9,10 +9,13 @@ Originally designed for "study with me" streams, but works for any timed session
 ## Features
 
 ### Core Timer
+- **4 timer modes** — Pomodoro, Stopwatch (count up), Countdown (single), Custom Intervals
 - **Full Pomodoro cycle** — Focus → Short Break → Long Break, auto-cycling
-- **Session persistence** — save and restore timer state across OBS restarts and stream interruptions
-- **Auto-start toggle** — auto-advance between sessions or pause and wait for manual resume
+- **Custom intervals** — define named segments like `Work:25,Break:5,Work:25,Break:5`
+- **Session persistence** — save and restore timer state across OBS restarts
+- **Auto-start toggle** — auto-advance between sessions or pause and wait
 - **Session tracking** — "Done: 3/6" counter with configurable goal
+- **Break suggestions** — cycle through customizable tips during breaks (Stretch!, Hydrate!, etc.)
 - **Total focus time** — tracks cumulative focus seconds across the entire session
 - **Crash resilience** — auto-saves state every second
 
@@ -24,6 +27,7 @@ Originally designed for "study with me" streams, but works for any timed session
 - **Hotkey support** — Start/Pause, Stop, and Skip from anywhere in OBS
 - **Background media** — swap background images or looping videos per session type
 - **Audio alerts** — per-session custom sounds (focus, short break, long break)
+- **Source visibility** — auto-hide sources during focus (e.g. hide webcam), show on break
 - **Source dropdowns** — pick OBS sources and scenes from lists instead of typing names
 - **Progress bar** — character-based bar that fills as the session progresses
 
@@ -61,6 +65,24 @@ Create these sources in your scene before configuring the script:
 | Alert sound | Media Source | Plays audio alerts on session change |
 
 > **Note**: Source names are picked from dropdowns in the script settings — no manual typing needed.
+
+### Timer Modes
+
+Select a timer mode from the **"Timer Mode"** dropdown:
+
+| Mode | Behavior |
+|------|----------|
+| **Pomodoro** | Standard Focus → Short Break → Long Break cycle (default) |
+| **Stopwatch** | Counts up from 0:00. No auto-stop. Good for tracking total time on a task. |
+| **Countdown** | Single countdown from a set duration. Stops and alerts at zero. |
+| **Custom Intervals** | Named segments you define. Enter in the format `Name:Minutes,Name:Minutes,...` |
+
+**Custom Intervals examples:**
+- HIIT: `Warm-up:5,Exercise:20,Rest:5,Exercise:20,Cool-down:5`
+- Podcast: `Intro:2,Guest Segment:25,Ads:3,Discussion:20,Outro:2`
+- Study: `Review:10,Practice:30,Break:5,Practice:30,Break:5`
+
+Custom intervals advance automatically. If "Auto-start Next Session / Loop" is enabled, the sequence restarts from the beginning after the last segment.
 
 ### Browser Source Overlay (Optional)
 
@@ -141,6 +163,19 @@ The script auto-detects the source type and handles it accordingly.
 - **Auto-stop on stream end**: Timer stops and shows a session summary when the stream ends
 - Both are off by default — enable them in the settings if desired
 
+### Source Visibility (Optional)
+
+Auto-hide a source (like your webcam) during focus sessions:
+
+1. Select the source from **"Hide During Focus (e.g. webcam)"** dropdown
+2. The source is disabled during Focus and re-enabled during breaks
+
+### Break Suggestions
+
+The script displays a rotating tip during break sessions (e.g. "Short Break · Stretch!"). Customize the list in the **"Break Suggestions"** text field — comma-separated, one per break.
+
+Default suggestions: `Stretch!,Hydrate!,Look away from screen,Take a walk,Deep breaths,Roll your shoulders,Stand up,Rest your eyes`
+
 ## Session Persistence
 
 The timer automatically saves its state to `pomodoro_state.json` (next to the script). This means:
@@ -167,16 +202,22 @@ After loading the script, go to **Settings** → **Hotkeys** and search for "Pom
 
 All settings are available in the script panel (**Tools** → **Scripts** → select the script):
 
-### Durations
+### Timer Mode
+- **Timer Mode** — Pomodoro / Stopwatch / Countdown / Custom Intervals
+- **Countdown Duration** — for Countdown mode (1–480 min, default: 25)
+- **Custom Intervals** — text field for `Name:Min,...` segments
+
+### Durations (Pomodoro)
 - Focus Duration (1–120 min, default: 25)
 - Short Break (1–30 min, default: 5)
 - Long Break (1–60 min, default: 15)
 - Long Break interval (every N cycles, default: 4)
 
 ### Behavior
-- **Auto-start Next Session** — auto-advance or pause between sessions
+- **Auto-start Next Session / Loop** — auto-advance or loop custom intervals
 - **Show Progress Bar** — toggle the visual progress bar
 - **Goal Sessions** — target focus session count for "Done: X/Y"
+- **Break Suggestions** — comma-separated list of break tips
 
 ### Stream Integration
 - **Auto-start Timer on Stream Start** — timer begins when you go live
@@ -191,6 +232,9 @@ All settings are available in the script panel (**Tools** → **Scripts** → se
 - **Enable Mic Control** — master toggle
 - **Mute Mic During Focus** — mute during focus, unmute on break (or vice versa)
 - **Mic Source** — dropdown to select your mic
+
+### Source Visibility
+- **Hide During Focus** — dropdown to select a source to hide during focus sessions
 
 ### Messages
 All session and transition messages are customizable — change "Focus Time" to "Deep Work", "Short Break" to "Stretch Break", etc.
@@ -220,7 +264,7 @@ sbobs/
 - [x] **v2.1** — Session persistence, background video support
 - [x] **v2.2** — Scene switching, chapter markers, mic control, stream awareness
 - [x] **v3.0** — Browser Source overlay + dockable stats panel
-- [ ] **v3.1** — Multiple timer modes (stopwatch, countdown, custom intervals)
+- [x] **v3.1** — Timer modes, break suggestions, source visibility
 
 ## Use Cases
 
