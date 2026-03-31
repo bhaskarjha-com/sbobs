@@ -15,7 +15,7 @@ if not obs then
     return
 end
 
-local VERSION = "4.0.0"
+local VERSION = "5.0.0"
 
 ------------------------------------------------------------------------
 -- State
@@ -38,6 +38,24 @@ local custom_segment_index = 1
 local overtime_seconds = 0
 local is_overtime = false
 local stream_start_time = 0
+
+-- Wallclock timing (drift-proof)
+local session_epoch = 0           -- os.time() when current segment counting started
+local session_pause_total = 0     -- accumulated seconds paused in current segment
+local pause_epoch = 0             -- os.time() when current pause began
+local session_target_duration = 0 -- target seconds for current segment (adjustable)
+
+-- File I/O optimization
+local state_dirty = false
+local last_save_time = 0
+
+-- Time adjustment
+local time_adjust_increment = 5   -- minutes to add/subtract per hotkey press
+
+-- Warning alerts
+local warning_5min_fired = false
+local warning_1min_fired = false
+local warning_break_end_fired = false
 
 -- Volume fade state
 local fade_active = false
@@ -73,6 +91,13 @@ local starting_session_offset = 0
 
 -- Negative timer / overtime
 local enable_overtime = false
+
+-- Warning alert settings
+local enable_warning_alerts = false
+local warning_5min_enabled = true
+local warning_1min_enabled = true
+local warning_break_end_enabled = true
+local warning_break_end_seconds = 30
 
 -- Session history logging
 local enable_session_log = false
@@ -142,12 +167,52 @@ local long_break_alert_sound_path = ""
 local hotkey_start_pause = obs.OBS_INVALID_HOTKEY_ID
 local hotkey_stop = obs.OBS_INVALID_HOTKEY_ID
 local hotkey_skip = obs.OBS_INVALID_HOTKEY_ID
+local hotkey_add_time = obs.OBS_INVALID_HOTKEY_ID
+local hotkey_sub_time = obs.OBS_INVALID_HOTKEY_ID
 
 ------------------------------------------------------------------------
 -- Helpers
 ------------------------------------------------------------------------
 local function log(msg)
     print("[Pomodoro] " .. msg)
+end
+
+local function mark_dirty()
+    state_dirty = true
+end
+
+local function json_escape(str)
+    if not str then return "" end
+    str = str:gsub('\\', '\\\\')
+    str = str:gsub('"', '\\"')
+    str = str:gsub('\n', '\\n')
+    str = str:gsub('\r', '\\r')
+    str = str:gsub('\t', '\\t')
+    -- Escape control characters (0x00-0x1F)
+    str = str:gsub('[%c]', function(c)
+        return string.format('\\u%04x', string.byte(c))
+    end)
+    return str
+end
+
+local function get_session_elapsed()
+    if session_epoch == 0 then return 0 end
+    local now = os.time()
+    local paused = session_pause_total
+    if is_paused and pause_epoch > 0 then
+        paused = paused + (now - pause_epoch)
+    end
+    return math.max(0, now - session_epoch - paused)
+end
+
+local function compute_current_time()
+    if not is_running then return current_time end
+    local elapsed = get_session_elapsed()
+    if timer_mode == "stopwatch" then
+        return elapsed
+    else
+        return math.max(0, session_target_duration - elapsed)
+    end
 end
 
 local function get_duration_for_session(stype)
@@ -275,12 +340,22 @@ local function get_next_session_type()
     return "Focus"
 end
 
-local function save_state()
+local function save_state(force)
+    -- Throttle: only write when dirty or forced, max once per second
+    if not force and not state_dirty then return end
+    local now = os.time()
+    if not force and now == last_save_time then return end
+
     local path = get_state_file_path()
-    local file = io.open(path, "w")
+    local tmp_path = path .. ".tmp"
+    local file = io.open(tmp_path, "w")
     if not file then return end
 
-    local total = get_duration_for_session(session_type)
+    local display_time = compute_current_time()
+    local total = session_target_duration
+    if not is_running or total == 0 then
+        total = get_duration_for_session(session_type)
+    end
     local seg_name = ""
     if timer_mode == "custom" and custom_segments[custom_segment_index] then
         seg_name = custom_segments[custom_segment_index].name
@@ -288,17 +363,38 @@ local function save_state()
 
     local next_type = get_next_session_type()
     local sessions_remaining = math.max(0, goal_sessions - completed_focus_sessions)
-    local next_in = current_time
+    local next_in = display_time
     if is_overtime then next_in = 0 end
 
     local stream_dur = 0
     if stream_start_time > 0 then
-        stream_dur = os.time() - stream_start_time
+        stream_dur = now - stream_start_time
     end
 
     local suggestion_text = ""
     if suggestion_index > 0 and suggestion_index <= #parsed_suggestions then
         suggestion_text = parsed_suggestions[suggestion_index]
+    end
+
+    -- Build chat-ready status line
+    local chat_status = ""
+    if is_running then
+        if is_overtime then
+            chat_status = string.format("%s +%s", session_type, format_time(overtime_seconds))
+        elseif timer_mode == "stopwatch" then
+            chat_status = "Stopwatch " .. format_time(display_time)
+        elseif timer_mode == "pomodoro" then
+            chat_status = string.format("%s %s (%d/%d)",
+                session_type, format_time(display_time),
+                completed_focus_sessions, goal_sessions)
+        elseif timer_mode == "custom" and seg_name ~= "" then
+            chat_status = string.format("%s %s (%d/%d)",
+                seg_name, format_time(display_time),
+                custom_segment_index, #custom_segments)
+        else
+            chat_status = string.format("%s %s", session_type, format_time(display_time))
+        end
+        if is_paused then chat_status = chat_status .. " [Paused]" end
     end
 
     local json = string.format(
@@ -326,36 +422,51 @@ local function save_state()
         '  "sessions_remaining": %d,\n' ..
         '  "break_suggestion": "%s",\n' ..
         '  "stream_duration": %d,\n' ..
+        '  "chat_status_line": "%s",\n' ..
+        '  "session_epoch": %d,\n' ..
+        '  "session_pause_total": %d,\n' ..
+        '  "session_target_duration": %d,\n' ..
         '  "timestamp": %d\n' ..
         '}',
-        VERSION,
-        timer_mode,
+        json_escape(VERSION),
+        json_escape(timer_mode),
         tostring(is_running),
         tostring(is_paused),
-        session_type,
-        current_time,
+        json_escape(session_type),
+        display_time,
         total,
         cycle_count,
         completed_focus_sessions,
         goal_sessions,
         total_focus_seconds,
         tostring(show_transition),
-        transition_message:gsub('"', '\\"'),
-        seg_name:gsub('"', '\\"'),
+        json_escape(transition_message),
+        json_escape(seg_name),
         custom_segment_index,
         #custom_segments,
         tostring(is_overtime),
         overtime_seconds,
-        next_type,
+        json_escape(next_type),
         next_in,
         sessions_remaining,
-        suggestion_text:gsub('"', '\\"'),
+        json_escape(suggestion_text),
         stream_dur,
-        os.time()
+        json_escape(chat_status),
+        session_epoch,
+        session_pause_total,
+        session_target_duration,
+        now
     )
 
     file:write(json)
     file:close()
+
+    -- Atomic rename
+    os.remove(path)
+    os.rename(tmp_path, path)
+
+    state_dirty = false
+    last_save_time = now
 end
 
 local function load_state()
@@ -392,6 +503,10 @@ local function load_state()
         total_focus_seconds = get_number("total_focus_seconds"),
         custom_segment_index = get_number("custom_segment_index"),
         timestamp = get_number("timestamp"),
+        -- v5.0 wallclock fields
+        session_epoch = get_number("session_epoch"),
+        session_pause_total = get_number("session_pause_total"),
+        session_target_duration = get_number("session_target_duration"),
     }
 
     if not state.current_time then
@@ -408,11 +523,19 @@ local function load_state()
         end
     end
 
+    -- Detect v4.x state files (no wallclock fields) — migrate gracefully
+    if state.session_epoch == nil or state.session_epoch == 0 then
+        state.is_v4_migration = true
+        log("Migrating v4.x state — wallclock will be freshly initialized")
+    end
+
     return state
 end
 
 local function delete_state_file()
     os.remove(get_state_file_path())
+    -- Clean up temp file if it exists
+    os.remove(get_state_file_path() .. ".tmp")
 end
 
 local function apply_saved_state(state)
@@ -426,14 +549,42 @@ local function apply_saved_state(state)
         custom_segment_index = state.custom_segment_index
     end
 
+    -- Initialize wallclock state for resume
     if state.is_running then
         is_running = true
-        is_paused = true
+        is_paused = true  -- Always resume into paused state for safety
+
+        if state.is_v4_migration or not state.session_epoch or state.session_epoch == 0 then
+            -- Migrate from v4: synthesize epoch from current_time
+            local dur = get_duration_for_session(session_type)
+            local elapsed = dur - state.current_time
+            session_epoch = os.time() - elapsed
+            session_pause_total = 0
+            pause_epoch = os.time()
+            session_target_duration = dur
+            log("v4→v5 migration: synthesized wallclock from " .. format_time(state.current_time))
+        else
+            -- v5 resume: restore wallclock state
+            session_epoch = state.session_epoch
+            session_pause_total = state.session_pause_total or 0
+            session_target_duration = state.session_target_duration or get_duration_for_session(session_type)
+            pause_epoch = os.time()  -- We're resuming paused, so pause starts now
+        end
+
         log("Resumed — " .. session_type .. " at " .. format_time(current_time) .. " (paused)")
     else
         is_running = false
         is_paused = false
+        session_epoch = 0
+        session_pause_total = 0
+        pause_epoch = 0
+        session_target_duration = 0
     end
+
+    -- Reset warning flags
+    warning_5min_fired = false
+    warning_1min_fired = false
+    warning_break_end_fired = false
 
     has_pending_resume = false
     update_display_texts()
@@ -793,6 +944,18 @@ local function update_session(new_type, duration, message)
     current_time = duration
     is_overtime = false
     overtime_seconds = 0
+
+    -- Initialize wallclock for new session
+    session_epoch = os.time()
+    session_pause_total = 0
+    pause_epoch = 0
+    session_target_duration = duration
+
+    -- Reset warning flags
+    warning_5min_fired = false
+    warning_1min_fired = false
+    warning_break_end_fired = false
+
     show_transition_msg(message)
     update_background_media()
     play_alert_sound()
@@ -802,6 +965,7 @@ local function update_session(new_type, duration, message)
     update_volume()
     update_filters()
     add_chapter_marker()
+    mark_dirty()
 end
 
 local function switch_session()
@@ -825,6 +989,8 @@ local function switch_session()
         play_alert_sound()
         is_running = false
         is_paused = false
+        session_epoch = 0
+        session_target_duration = 0
         log("Countdown complete")
         delete_state_file()
         return
@@ -845,6 +1011,8 @@ local function switch_session()
                 play_alert_sound()
                 is_running = false
                 is_paused = false
+                session_epoch = 0
+                session_target_duration = 0
                 log("All custom segments complete")
                 delete_state_file()
                 return
@@ -857,52 +1025,124 @@ local function switch_session()
             current_time = seg.duration
             is_overtime = false
             overtime_seconds = 0
+
+            -- Wallclock for new segment
+            session_epoch = os.time()
+            session_pause_total = 0
+            pause_epoch = 0
+            session_target_duration = seg.duration
+
+            -- Reset warnings
+            warning_5min_fired = false
+            warning_1min_fired = false
+            warning_break_end_fired = false
+
             show_transition_msg("Next: " .. seg.name)
             play_alert_sound()
             add_chapter_marker()
         end
-        save_state()
+        mark_dirty()
+        save_state(true)
         return
     end
 
     if not auto_start_next then
         is_paused = true
+        pause_epoch = os.time()
         log("Session changed — waiting for manual resume")
     end
 
-    save_state()
+    mark_dirty()
+    save_state(true)
 end
 
 ------------------------------------------------------------------------
 -- Timer
 ------------------------------------------------------------------------
+local function fire_warning_alert()
+    -- Uses focus_alert_sound_path as the warning sound (same alert source)
+    if not alert_source_name or alert_source_name == "" then return end
+    if not focus_alert_sound_path or focus_alert_sound_path == "" then return end
+    local source = obs.obs_get_source_by_name(alert_source_name)
+    if source then
+        local settings = obs.obs_data_create()
+        obs.obs_data_set_string(settings, "local_file", focus_alert_sound_path)
+        obs.obs_data_set_bool(settings, "is_local_file", true)
+        obs.obs_source_update(source, settings)
+        obs.obs_data_release(settings)
+        obs.obs_source_media_restart(source)
+        obs.obs_source_release(source)
+    end
+end
+
+local function check_warning_alerts(time_remaining)
+    if not enable_warning_alerts then return end
+    if timer_mode == "stopwatch" then return end
+    if is_overtime then return end
+
+    -- 5-minute warning
+    if warning_5min_enabled and not warning_5min_fired and time_remaining <= 300 and time_remaining > 298 then
+        warning_5min_fired = true
+        fire_warning_alert()
+        log("Warning: 5 minutes remaining")
+    end
+
+    -- 1-minute warning
+    if warning_1min_enabled and not warning_1min_fired and time_remaining <= 60 and time_remaining > 58 then
+        warning_1min_fired = true
+        fire_warning_alert()
+        log("Warning: 1 minute remaining")
+    end
+
+    -- Break ending warning (during breaks only)
+    if warning_break_end_enabled and not warning_break_end_fired
+       and session_type ~= "Focus" and timer_mode == "pomodoro"
+       and time_remaining <= warning_break_end_seconds and time_remaining > (warning_break_end_seconds - 2) then
+        warning_break_end_fired = true
+        fire_warning_alert()
+        log("Warning: break ending in " .. warning_break_end_seconds .. "s")
+    end
+end
+
 local function timer_tick()
     process_pending_scene_switch()
     process_volume_fade()
 
-    if not is_running or is_paused then return end
+    if not is_running or is_paused then
+        -- Still save periodically when paused (for UI polling)
+        if is_running and is_paused then
+            mark_dirty()
+            save_state()
+        end
+        return
+    end
 
     if show_transition then
         transition_timer = transition_timer - 1
         if transition_timer <= 0 then
             show_transition = false
         end
+        mark_dirty()
     else
+        -- Wallclock-based time computation
+        current_time = compute_current_time()
+
         if timer_mode == "stopwatch" then
-            current_time = current_time + 1
             total_focus_seconds = total_focus_seconds + 1
         else
+            -- Track focus time (tick-based is fine for aggregate stat)
             if current_time > 0 then
-                current_time = current_time - 1
                 if timer_mode == "pomodoro" and session_type == "Focus" then
                     total_focus_seconds = total_focus_seconds + 1
                 elseif timer_mode == "custom" then
                     total_focus_seconds = total_focus_seconds + 1
                 end
+
+                -- Check warning alerts
+                check_warning_alerts(current_time)
             else
                 -- Timer hit zero
                 if enable_overtime and not is_overtime then
-                    -- Enter overtime mode instead of switching
                     is_overtime = true
                     overtime_seconds = 0
                     play_alert_sound()
@@ -914,6 +1154,7 @@ local function timer_tick()
                 end
             end
         end
+        mark_dirty()
     end
     update_display_texts()
     save_state()
@@ -925,6 +1166,11 @@ end
 local function start_timer()
     if is_running and not is_paused then return end
     if is_paused then
+        -- Resume: accumulate pause duration into session_pause_total
+        if pause_epoch > 0 then
+            session_pause_total = session_pause_total + (os.time() - pause_epoch)
+            pause_epoch = 0
+        end
         is_paused = false
         log("Timer resumed")
     else
@@ -933,24 +1179,38 @@ local function start_timer()
         is_overtime = false
         overtime_seconds = 0
 
+        -- Initialize wallclock for new session
+        session_epoch = os.time()
+        session_pause_total = 0
+        pause_epoch = 0
+
+        -- Reset warnings
+        warning_5min_fired = false
+        warning_1min_fired = false
+        warning_break_end_fired = false
+
         if timer_mode == "stopwatch" then
             current_time = 0
             session_type = "Stopwatch"
+            session_target_duration = 0
             log("Stopwatch started")
         elseif timer_mode == "countdown" then
             current_time = countdown_duration
             session_type = "Countdown"
+            session_target_duration = countdown_duration
             log("Countdown started — " .. format_time(countdown_duration))
         elseif timer_mode == "custom" then
             if #custom_segments == 0 then
                 log("No custom segments defined — add segments like 'Work:25,Break:5'")
                 is_running = false
+                session_epoch = 0
                 return
             end
             custom_segment_index = 1
             local seg = custom_segments[1]
             session_type = seg.name
             current_time = seg.duration
+            session_target_duration = seg.duration
             log("Custom intervals started — " .. seg.name .. " (" .. format_time(seg.duration) .. ")")
         else
             -- Pomodoro
@@ -958,6 +1218,7 @@ local function start_timer()
                 current_time = focus_duration
                 session_type = "Focus"
             end
+            session_target_duration = current_time
             -- Apply session offset on first start
             if starting_session_offset > 0 and completed_focus_sessions == 0 then
                 completed_focus_sessions = starting_session_offset
@@ -972,13 +1233,14 @@ local function start_timer()
             stream_start_time = os.time()
         end
     end
+    mark_dirty()
     update_display_texts()
     update_background_media()
     update_mic_state()
     update_source_visibility()
     update_volume()
     update_filters()
-    save_state()
+    save_state(true)
 end
 
 local function toggle_pause()
@@ -986,17 +1248,30 @@ local function toggle_pause()
         start_timer()
         return
     end
-    is_paused = not is_paused
-    log(is_paused and "Timer paused" or "Timer resumed")
+    if is_paused then
+        -- Resume: accumulate pause duration
+        if pause_epoch > 0 then
+            session_pause_total = session_pause_total + (os.time() - pause_epoch)
+            pause_epoch = 0
+        end
+        is_paused = false
+        log("Timer resumed")
+    else
+        -- Pause: record when pause started
+        is_paused = true
+        pause_epoch = os.time()
+        log("Timer paused")
+    end
+    mark_dirty()
     update_display_texts()
-    save_state()
+    save_state(true)
 end
 
 local function stop_timer()
     -- Log incomplete session
     if is_running then
-        local dur = get_duration_for_session(session_type) - current_time
-        log_session(session_type, dur, false)
+        local elapsed = get_session_elapsed()
+        log_session(session_type, elapsed, false)
     end
 
     is_running = false
@@ -1008,6 +1283,18 @@ local function stop_timer()
     custom_segment_index = 1
     is_overtime = false
     overtime_seconds = 0
+
+    -- Reset wallclock
+    session_epoch = 0
+    session_pause_total = 0
+    pause_epoch = 0
+    session_target_duration = 0
+
+    -- Reset warnings
+    warning_5min_fired = false
+    warning_1min_fired = false
+    warning_break_end_fired = false
+
     log("Timer stopped")
     update_display_texts()
     delete_state_file()
@@ -1044,8 +1331,44 @@ local function skip_session()
     log("Skipping " .. session_type)
     switch_session()
     if is_paused then
+        -- Resume after skip: accumulate pause and clear
+        if pause_epoch > 0 then
+            session_pause_total = session_pause_total + (os.time() - pause_epoch)
+            pause_epoch = 0
+        end
         is_paused = false
     end
+end
+
+local function add_time()
+    if not is_running then return end
+    if timer_mode == "stopwatch" then return end
+
+    local add_seconds = time_adjust_increment * 60
+    session_target_duration = session_target_duration + add_seconds
+    current_time = compute_current_time()
+
+    -- Reset warnings that might fire again
+    if current_time > 300 then warning_5min_fired = false end
+    if current_time > 60 then warning_1min_fired = false end
+
+    mark_dirty()
+    log("Added " .. time_adjust_increment .. " min — now " .. format_time(current_time) .. " remaining")
+    update_display_texts()
+    save_state(true)
+end
+
+local function subtract_time()
+    if not is_running then return end
+    if timer_mode == "stopwatch" then return end
+
+    local sub_seconds = time_adjust_increment * 60
+    session_target_duration = math.max(0, session_target_duration - sub_seconds)
+    current_time = compute_current_time()
+    mark_dirty()
+    log("Subtracted " .. time_adjust_increment .. " min — now " .. format_time(current_time) .. " remaining")
+    update_display_texts()
+    save_state(true)
 end
 
 local function resume_previous_session()
@@ -1074,6 +1397,16 @@ end
 local function on_hotkey_skip(pressed)
     if not pressed then return end
     skip_session()
+end
+
+local function on_hotkey_add_time(pressed)
+    if not pressed then return end
+    add_time()
+end
+
+local function on_hotkey_sub_time(pressed)
+    if not pressed then return end
+    subtract_time()
 end
 
 ------------------------------------------------------------------------
@@ -1141,6 +1474,7 @@ end
 
 function script_properties()
     local props = obs.obs_properties_create()
+    local p
 
     -- ── Controls ──
     obs.obs_properties_add_button(props, "start_button", "▶  Start", start_timer)
@@ -1148,13 +1482,15 @@ function script_properties()
     obs.obs_properties_add_button(props, "stop_button", "⏹  Stop", stop_timer)
     obs.obs_properties_add_button(props, "skip_button", "⏭  Skip Session", skip_session)
     obs.obs_properties_add_button(props, "reset_button", "↺  Reset All", reset_timer)
+    obs.obs_properties_add_button(props, "add_time_button", "+  Add Time", add_time)
+    obs.obs_properties_add_button(props, "sub_time_button", "−  Subtract Time", subtract_time)
 
     if has_pending_resume then
         obs.obs_properties_add_button(props, "resume_button",
             "⏪  Resume Previous Session", resume_previous_session)
     end
 
-    -- ── Timer Mode ──
+    -- ── Timer Mode & Durations ──
     local mode_list = obs.obs_properties_add_list(props, "timer_mode",
         "Timer Mode", obs.OBS_COMBO_TYPE_LIST, obs.OBS_COMBO_FORMAT_STRING)
     obs.obs_property_list_add_string(mode_list, "Pomodoro", "pomodoro")
@@ -1162,18 +1498,13 @@ function script_properties()
     obs.obs_property_list_add_string(mode_list, "Countdown (single)", "countdown")
     obs.obs_property_list_add_string(mode_list, "Custom Intervals", "custom")
 
-    -- ── Pomodoro Durations ──
     obs.obs_properties_add_int(props, "focus_duration", "Focus Duration (min)", 1, 120, 1)
     obs.obs_properties_add_int(props, "short_break_duration", "Short Break (min)", 1, 30, 1)
     obs.obs_properties_add_int(props, "long_break_duration", "Long Break (min)", 1, 60, 1)
     obs.obs_properties_add_int(props, "long_break_interval", "Long Break Every (cycles)", 1, 10, 1)
     obs.obs_properties_add_int(props, "goal_sessions", "Goal Sessions", 1, 20, 1)
     obs.obs_properties_add_int(props, "starting_session_offset", "Starting Session Offset", 0, 20, 1)
-
-    -- ── Countdown Duration ──
     obs.obs_properties_add_int(props, "countdown_duration", "Countdown Duration (min)", 1, 480, 1)
-
-    -- ── Custom Intervals ──
     obs.obs_properties_add_text(props, "custom_intervals_text",
         "Custom Intervals (Name:Min,...)", obs.OBS_TEXT_DEFAULT)
 
@@ -1182,114 +1513,143 @@ function script_properties()
     obs.obs_properties_add_bool(props, "show_progress_bar", "Show Progress Bar")
     obs.obs_properties_add_bool(props, "enable_overtime", "Enable Overtime (negative timer)")
     obs.obs_properties_add_int(props, "transition_display_time", "Transition Message Duration (sec)", 1, 10, 1)
-
-    -- ── Break Suggestions ──
+    obs.obs_properties_add_int(props, "time_adjust_increment", "Time Adjust Increment (min)", 1, 30, 1)
     obs.obs_properties_add_text(props, "break_suggestions_text",
         "Break Suggestions (comma-separated)", obs.OBS_TEXT_DEFAULT)
-
-    -- ── Session Logging ──
     obs.obs_properties_add_bool(props, "enable_session_log", "Log Sessions to CSV File")
 
-    -- ── Stream Integration ──
-    obs.obs_properties_add_bool(props, "auto_start_on_stream", "Auto-start Timer on Stream Start")
-    obs.obs_properties_add_bool(props, "auto_stop_on_stream_end", "Auto-stop Timer on Stream End")
-    obs.obs_properties_add_bool(props, "enable_chapter_markers", "Add Recording Chapter Markers")
+    -- ── Text Sources ──
+    local src_group = obs.obs_properties_create()
+    p = obs.obs_properties_add_list(src_group, "time_source",
+        "Timer Text Source", obs.OBS_COMBO_TYPE_LIST, obs.OBS_COMBO_FORMAT_STRING)
+    populate_source_list(p)
+    p = obs.obs_properties_add_list(src_group, "message_source",
+        "Session Message Source", obs.OBS_COMBO_TYPE_LIST, obs.OBS_COMBO_FORMAT_STRING)
+    populate_source_list(p)
+    p = obs.obs_properties_add_list(src_group, "focus_count_source",
+        "Focus Count Source", obs.OBS_COMBO_TYPE_LIST, obs.OBS_COMBO_FORMAT_STRING)
+    populate_source_list(p)
+    p = obs.obs_properties_add_list(src_group, "progress_bar_source",
+        "Progress Bar Source", obs.OBS_COMBO_TYPE_LIST, obs.OBS_COMBO_FORMAT_STRING)
+    populate_source_list(p)
+    p = obs.obs_properties_add_list(src_group, "background_media_source",
+        "Background Media Source", obs.OBS_COMBO_TYPE_LIST, obs.OBS_COMBO_FORMAT_STRING)
+    populate_source_list(p)
+    p = obs.obs_properties_add_list(src_group, "alert_source_name",
+        "Alert Sound Source (Media)", obs.OBS_COMBO_TYPE_LIST, obs.OBS_COMBO_FORMAT_STRING)
+    populate_source_list(p)
+    obs.obs_properties_add_group(props, "text_sources_group", "OBS Sources",
+        obs.OBS_GROUP_NORMAL, src_group)
 
-    -- ── Scene Switching ──
-    obs.obs_properties_add_bool(props, "enable_scene_switching", "Enable Scene Switching")
-    local p
-
-    p = obs.obs_properties_add_list(props, "focus_scene",
+    -- ── Scene Switching (checkable group) ──
+    local scene_group = obs.obs_properties_create()
+    p = obs.obs_properties_add_list(scene_group, "focus_scene",
         "Focus Scene", obs.OBS_COMBO_TYPE_LIST, obs.OBS_COMBO_FORMAT_STRING)
     populate_scene_list(p)
-    p = obs.obs_properties_add_list(props, "short_break_scene",
+    p = obs.obs_properties_add_list(scene_group, "short_break_scene",
         "Short Break Scene", obs.OBS_COMBO_TYPE_LIST, obs.OBS_COMBO_FORMAT_STRING)
     populate_scene_list(p)
-    p = obs.obs_properties_add_list(props, "long_break_scene",
+    p = obs.obs_properties_add_list(scene_group, "long_break_scene",
         "Long Break Scene", obs.OBS_COMBO_TYPE_LIST, obs.OBS_COMBO_FORMAT_STRING)
     populate_scene_list(p)
+    obs.obs_properties_add_group(props, "enable_scene_switching", "Scene Switching",
+        obs.OBS_GROUP_CHECKABLE, scene_group)
 
-    -- ── Mic Control ──
-    obs.obs_properties_add_bool(props, "enable_mic_control", "Enable Mic Control")
-    obs.obs_properties_add_bool(props, "mute_mic_during_focus", "Mute Mic During Focus")
-    p = obs.obs_properties_add_list(props, "mic_source_name",
+    -- ── Mic Control (checkable group) ──
+    local mic_group = obs.obs_properties_create()
+    obs.obs_properties_add_bool(mic_group, "mute_mic_during_focus", "Mute Mic During Focus")
+    p = obs.obs_properties_add_list(mic_group, "mic_source_name",
         "Mic Source", obs.OBS_COMBO_TYPE_LIST, obs.OBS_COMBO_FORMAT_STRING)
     populate_source_list(p)
+    obs.obs_properties_add_group(props, "enable_mic_control", "Mic Control",
+        obs.OBS_GROUP_CHECKABLE, mic_group)
 
     -- ── Source Visibility ──
     p = obs.obs_properties_add_list(props, "hide_during_focus_source",
         "Hide During Focus (e.g. webcam)", obs.OBS_COMBO_TYPE_LIST, obs.OBS_COMBO_FORMAT_STRING)
     populate_source_list(p)
 
-    -- ── Volume Ducking ──
-    p = obs.obs_properties_add_list(props, "volume_source_name",
-        "Volume Ducking Source (e.g. music)", obs.OBS_COMBO_TYPE_LIST, obs.OBS_COMBO_FORMAT_STRING)
+    -- ── Volume Ducking (group) ──
+    local vol_group = obs.obs_properties_create()
+    p = obs.obs_properties_add_list(vol_group, "volume_source_name",
+        "Music/Audio Source", obs.OBS_COMBO_TYPE_LIST, obs.OBS_COMBO_FORMAT_STRING)
     populate_source_list(p)
-    obs.obs_properties_add_int_slider(props, "focus_volume", "Focus Volume %", 0, 100, 5)
-    obs.obs_properties_add_int_slider(props, "break_volume", "Break Volume %", 0, 100, 5)
-    obs.obs_properties_add_bool(props, "enable_volume_fade", "Smooth Volume Fade (3s)")
+    obs.obs_properties_add_int_slider(vol_group, "focus_volume", "Focus Volume %", 0, 100, 5)
+    obs.obs_properties_add_int_slider(vol_group, "break_volume", "Break Volume %", 0, 100, 5)
+    obs.obs_properties_add_bool(vol_group, "enable_volume_fade", "Smooth Volume Fade (3s)")
+    obs.obs_properties_add_group(props, "volume_ducking_group", "Volume Ducking",
+        obs.OBS_GROUP_NORMAL, vol_group)
 
-    -- ── Filter Toggle ──
-    p = obs.obs_properties_add_list(props, "filter_source_name",
-        "Filter Toggle Source (e.g. Camera)", obs.OBS_COMBO_TYPE_LIST, obs.OBS_COMBO_FORMAT_STRING)
+    -- ── Filter Toggle (group) ──
+    local filt_group = obs.obs_properties_create()
+    p = obs.obs_properties_add_list(filt_group, "filter_source_name",
+        "Source (e.g. Camera)", obs.OBS_COMBO_TYPE_LIST, obs.OBS_COMBO_FORMAT_STRING)
     populate_source_list(p)
-    obs.obs_properties_add_text(props, "focus_filters_enable",
-        "Enable During Focus (filter names, comma-sep)", obs.OBS_TEXT_DEFAULT)
-    obs.obs_properties_add_text(props, "focus_filters_disable",
-        "Disable During Focus (filter names, comma-sep)", obs.OBS_TEXT_DEFAULT)
+    obs.obs_properties_add_text(filt_group, "focus_filters_enable",
+        "Enable During Focus (comma-sep)", obs.OBS_TEXT_DEFAULT)
+    obs.obs_properties_add_text(filt_group, "focus_filters_disable",
+        "Disable During Focus (comma-sep)", obs.OBS_TEXT_DEFAULT)
+    obs.obs_properties_add_group(props, "filter_toggle_group", "Filter Toggle",
+        obs.OBS_GROUP_NORMAL, filt_group)
 
-    -- ── Text Sources ──
-    p = obs.obs_properties_add_list(props, "time_source",
-        "Timer Text Source", obs.OBS_COMBO_TYPE_LIST, obs.OBS_COMBO_FORMAT_STRING)
-    populate_source_list(p)
-    p = obs.obs_properties_add_list(props, "message_source",
-        "Session Message Source", obs.OBS_COMBO_TYPE_LIST, obs.OBS_COMBO_FORMAT_STRING)
-    populate_source_list(p)
-    p = obs.obs_properties_add_list(props, "focus_count_source",
-        "Focus Count Source", obs.OBS_COMBO_TYPE_LIST, obs.OBS_COMBO_FORMAT_STRING)
-    populate_source_list(p)
-    p = obs.obs_properties_add_list(props, "progress_bar_source",
-        "Progress Bar Source", obs.OBS_COMBO_TYPE_LIST, obs.OBS_COMBO_FORMAT_STRING)
-    populate_source_list(p)
-    p = obs.obs_properties_add_list(props, "background_media_source",
-        "Background Media Source", obs.OBS_COMBO_TYPE_LIST, obs.OBS_COMBO_FORMAT_STRING)
-    populate_source_list(p)
-    p = obs.obs_properties_add_list(props, "alert_source_name",
-        "Alert Sound Source (Media)", obs.OBS_COMBO_TYPE_LIST, obs.OBS_COMBO_FORMAT_STRING)
-    populate_source_list(p)
+    -- ── Warning Alerts (checkable group) ──
+    local warn_group = obs.obs_properties_create()
+    obs.obs_properties_add_bool(warn_group, "warning_5min_enabled", "5-Minute Warning Sound")
+    obs.obs_properties_add_bool(warn_group, "warning_1min_enabled", "1-Minute Warning Sound")
+    obs.obs_properties_add_bool(warn_group, "warning_break_end_enabled", "Break Ending Warning")
+    obs.obs_properties_add_int(warn_group, "warning_break_end_seconds", "Break Warning At (sec)", 10, 120, 5)
+    obs.obs_properties_add_group(props, "enable_warning_alerts", "Warning Alerts",
+        obs.OBS_GROUP_CHECKABLE, warn_group)
 
-    -- ── Audio Files ──
-    obs.obs_properties_add_path(props, "focus_alert_sound_path",
+    -- ── Audio Files (group) ──
+    local audio_group = obs.obs_properties_create()
+    obs.obs_properties_add_path(audio_group, "focus_alert_sound_path",
         "Focus Alert Sound", obs.OBS_PATH_FILE, "Audio (*.mp3 *.ogg *.wav)", nil)
-    obs.obs_properties_add_path(props, "short_break_alert_sound_path",
+    obs.obs_properties_add_path(audio_group, "short_break_alert_sound_path",
         "Short Break Alert Sound", obs.OBS_PATH_FILE, "Audio (*.mp3 *.ogg *.wav)", nil)
-    obs.obs_properties_add_path(props, "long_break_alert_sound_path",
+    obs.obs_properties_add_path(audio_group, "long_break_alert_sound_path",
         "Long Break Alert Sound", obs.OBS_PATH_FILE, "Audio (*.mp3 *.ogg *.wav)", nil)
+    obs.obs_properties_add_group(props, "audio_files_group", "Alert Sounds",
+        obs.OBS_GROUP_NORMAL, audio_group)
 
-    -- ── Background Media ──
-    obs.obs_properties_add_path(props, "focus_background_media",
+    -- ── Background Media (group) ──
+    local bg_group = obs.obs_properties_create()
+    obs.obs_properties_add_path(bg_group, "focus_background_media",
         "Focus Background", obs.OBS_PATH_FILE,
         "Media (*.png *.jpg *.jpeg *.bmp *.gif *.mp4 *.webm *.mov *.mkv)", nil)
-    obs.obs_properties_add_path(props, "short_break_background_media",
+    obs.obs_properties_add_path(bg_group, "short_break_background_media",
         "Short Break Background", obs.OBS_PATH_FILE,
         "Media (*.png *.jpg *.jpeg *.bmp *.gif *.mp4 *.webm *.mov *.mkv)", nil)
-    obs.obs_properties_add_path(props, "long_break_background_media",
+    obs.obs_properties_add_path(bg_group, "long_break_background_media",
         "Long Break Background", obs.OBS_PATH_FILE,
         "Media (*.png *.jpg *.jpeg *.bmp *.gif *.mp4 *.webm *.mov *.mkv)", nil)
+    obs.obs_properties_add_group(props, "background_media_group", "Background Media",
+        obs.OBS_GROUP_NORMAL, bg_group)
 
-    -- ── Messages ──
-    obs.obs_properties_add_text(props, "focus_message",
+    -- ── Stream Integration (checkable group) ──
+    local stream_group = obs.obs_properties_create()
+    obs.obs_properties_add_bool(stream_group, "auto_start_on_stream", "Auto-start Timer on Stream Start")
+    obs.obs_properties_add_bool(stream_group, "auto_stop_on_stream_end", "Auto-stop Timer on Stream End")
+    obs.obs_properties_add_bool(stream_group, "enable_chapter_markers", "Add Recording Chapter Markers")
+    obs.obs_properties_add_group(props, "stream_integration_group", "Stream Integration",
+        obs.OBS_GROUP_NORMAL, stream_group)
+
+    -- ── Messages (collapsible group) ──
+    local msg_group = obs.obs_properties_create()
+    obs.obs_properties_add_text(msg_group, "focus_message",
         "Focus Message", obs.OBS_TEXT_DEFAULT)
-    obs.obs_properties_add_text(props, "short_break_message",
+    obs.obs_properties_add_text(msg_group, "short_break_message",
         "Short Break Message", obs.OBS_TEXT_DEFAULT)
-    obs.obs_properties_add_text(props, "long_break_message",
+    obs.obs_properties_add_text(msg_group, "long_break_message",
         "Long Break Message", obs.OBS_TEXT_DEFAULT)
-    obs.obs_properties_add_text(props, "transition_to_focus_message",
+    obs.obs_properties_add_text(msg_group, "transition_to_focus_message",
         "→ Focus Transition", obs.OBS_TEXT_DEFAULT)
-    obs.obs_properties_add_text(props, "transition_to_short_break_message",
+    obs.obs_properties_add_text(msg_group, "transition_to_short_break_message",
         "→ Short Break Transition", obs.OBS_TEXT_DEFAULT)
-    obs.obs_properties_add_text(props, "transition_to_long_break_message",
+    obs.obs_properties_add_text(msg_group, "transition_to_long_break_message",
         "→ Long Break Transition", obs.OBS_TEXT_DEFAULT)
+    obs.obs_properties_add_group(props, "messages_group", "Session Messages",
+        obs.OBS_GROUP_NORMAL, msg_group)
 
     return props
 end
@@ -1311,10 +1671,19 @@ function script_defaults(settings)
     obs.obs_data_set_default_bool(settings, "enable_volume_fade", true)
     obs.obs_data_set_default_int(settings, "focus_volume", 30)
     obs.obs_data_set_default_int(settings, "break_volume", 80)
+    obs.obs_data_set_default_int(settings, "time_adjust_increment", 5)
     obs.obs_data_set_default_string(settings, "custom_intervals_text", "Work:25,Break:5,Work:25,Break:5")
     obs.obs_data_set_default_string(settings, "break_suggestions_text",
         "Stretch!,Hydrate!,Look away from screen,Take a walk,Deep breaths,Roll your shoulders,Stand up,Rest your eyes")
 
+    -- Warning alerts
+    obs.obs_data_set_default_bool(settings, "enable_warning_alerts", false)
+    obs.obs_data_set_default_bool(settings, "warning_5min_enabled", true)
+    obs.obs_data_set_default_bool(settings, "warning_1min_enabled", true)
+    obs.obs_data_set_default_bool(settings, "warning_break_end_enabled", true)
+    obs.obs_data_set_default_int(settings, "warning_break_end_seconds", 30)
+
+    -- Messages
     obs.obs_data_set_default_string(settings, "focus_message", "Focus Time")
     obs.obs_data_set_default_string(settings, "short_break_message", "Short Break")
     obs.obs_data_set_default_string(settings, "long_break_message", "Long Break")
@@ -1337,6 +1706,7 @@ function script_update(settings)
     show_progress_bar = obs.obs_data_get_bool(settings, "show_progress_bar")
     auto_start_next = obs.obs_data_get_bool(settings, "auto_start_next")
     enable_overtime = obs.obs_data_get_bool(settings, "enable_overtime")
+    time_adjust_increment = obs.obs_data_get_int(settings, "time_adjust_increment")
 
     custom_intervals_text = obs.obs_data_get_string(settings, "custom_intervals_text")
     custom_segments = parse_custom_intervals(custom_intervals_text)
@@ -1345,6 +1715,13 @@ function script_update(settings)
     parsed_suggestions = parse_suggestions(break_suggestions_text)
 
     enable_session_log = obs.obs_data_get_bool(settings, "enable_session_log")
+
+    -- Warning alerts
+    enable_warning_alerts = obs.obs_data_get_bool(settings, "enable_warning_alerts")
+    warning_5min_enabled = obs.obs_data_get_bool(settings, "warning_5min_enabled")
+    warning_1min_enabled = obs.obs_data_get_bool(settings, "warning_1min_enabled")
+    warning_break_end_enabled = obs.obs_data_get_bool(settings, "warning_break_end_enabled")
+    warning_break_end_seconds = obs.obs_data_get_int(settings, "warning_break_end_seconds")
 
     auto_start_on_stream = obs.obs_data_get_bool(settings, "auto_start_on_stream")
     auto_stop_on_stream_end = obs.obs_data_get_bool(settings, "auto_stop_on_stream_end")
@@ -1418,6 +1795,10 @@ function script_load(settings)
         "pomodoro_stop", "Pomodoro: Stop", on_hotkey_stop)
     hotkey_skip = obs.obs_hotkey_register_frontend(
         "pomodoro_skip", "Pomodoro: Skip Session", on_hotkey_skip)
+    hotkey_add_time = obs.obs_hotkey_register_frontend(
+        "pomodoro_add_time", "Pomodoro: Add Time", on_hotkey_add_time)
+    hotkey_sub_time = obs.obs_hotkey_register_frontend(
+        "pomodoro_sub_time", "Pomodoro: Subtract Time", on_hotkey_sub_time)
 
     local function load_hotkey(id, key)
         local a = obs.obs_data_get_array(settings, key)
@@ -1427,6 +1808,8 @@ function script_load(settings)
     load_hotkey(hotkey_start_pause, "pomodoro_hotkey_start_pause")
     load_hotkey(hotkey_stop, "pomodoro_hotkey_stop")
     load_hotkey(hotkey_skip, "pomodoro_hotkey_skip")
+    load_hotkey(hotkey_add_time, "pomodoro_hotkey_add_time")
+    load_hotkey(hotkey_sub_time, "pomodoro_hotkey_sub_time")
 
     obs.obs_frontend_add_event_callback(on_frontend_event)
 
@@ -1448,13 +1831,15 @@ function script_save(settings)
     save_hotkey(hotkey_start_pause, "pomodoro_hotkey_start_pause")
     save_hotkey(hotkey_stop, "pomodoro_hotkey_stop")
     save_hotkey(hotkey_skip, "pomodoro_hotkey_skip")
+    save_hotkey(hotkey_add_time, "pomodoro_hotkey_add_time")
+    save_hotkey(hotkey_sub_time, "pomodoro_hotkey_sub_time")
 
-    if is_running then save_state() end
+    if is_running then save_state(true) end
 end
 
 function script_unload()
     if is_running then
-        save_state()
+        save_state(true)
         log("State saved for resume")
     end
 
@@ -1463,5 +1848,7 @@ function script_unload()
     obs.obs_hotkey_unregister(hotkey_start_pause)
     obs.obs_hotkey_unregister(hotkey_stop)
     obs.obs_hotkey_unregister(hotkey_skip)
+    obs.obs_hotkey_unregister(hotkey_add_time)
+    obs.obs_hotkey_unregister(hotkey_sub_time)
     log("Unloaded")
 end

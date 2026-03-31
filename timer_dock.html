@@ -12,6 +12,7 @@
     --bg: #1a1b26;
     --surface: #24253a;
     --surface-hover: #2d2e45;
+    --surface-active: #363852;
     --border: rgba(255, 255, 255, 0.06);
     --text-primary: #e2e8f0;
     --text-secondary: #94a3b8;
@@ -24,6 +25,9 @@
     --overtime-color: #ef4444;
     --idle-color: #475569;
     --danger: #ef4444;
+    --ws-connected: #22c55e;
+    --ws-disconnected: #ef4444;
+    --ws-connecting: #f59e0b;
   }
 
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -70,6 +74,29 @@
     letter-spacing: 0.5px;
   }
 
+  .ws-indicator {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 0.45rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 1px 4px;
+    border-radius: 4px;
+    transition: background 0.2s;
+  }
+  .ws-indicator:hover { background: var(--surface-hover); }
+  .ws-dot {
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: var(--ws-disconnected);
+    transition: background 0.3s;
+  }
+  .ws-dot.connected { background: var(--ws-connected); }
+  .ws-dot.connecting { background: var(--ws-connecting); animation: blink 1s infinite; }
+
   .status-dot {
     width: 6px;
     height: 6px;
@@ -88,7 +115,7 @@
 
   .timer-section {
     text-align: center;
-    padding: 16px 0;
+    padding: 14px 0 10px;
   }
 
   .session-badge {
@@ -128,11 +155,65 @@
     margin-top: 4px;
   }
 
+  /* Control Buttons */
+  .controls {
+    display: flex;
+    gap: 4px;
+    margin: 10px 0;
+    flex-wrap: wrap;
+  }
+
+  .ctrl-btn {
+    flex: 1;
+    min-width: 0;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    border-radius: 6px;
+    padding: 7px 2px;
+    font-size: 0.65rem;
+    font-family: inherit;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    white-space: nowrap;
+  }
+  .ctrl-btn:hover { background: var(--surface-hover); color: var(--text-primary); }
+  .ctrl-btn:active { background: var(--surface-active); transform: scale(0.97); }
+  .ctrl-btn.primary {
+    background: rgba(34, 197, 94, 0.15);
+    border-color: rgba(34, 197, 94, 0.25);
+    color: var(--focus-color);
+  }
+  .ctrl-btn.primary:hover { background: rgba(34, 197, 94, 0.25); }
+  .ctrl-btn.danger {
+    background: rgba(239, 68, 68, 0.1);
+    border-color: rgba(239, 68, 68, 0.2);
+    color: var(--danger);
+  }
+  .ctrl-btn.danger:hover { background: rgba(239, 68, 68, 0.2); }
+  .ctrl-btn:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+    transform: none !important;
+  }
+  .ctrl-btn .icon { font-size: 0.8rem; }
+
+  .controls-row2 {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 10px;
+  }
+
   .progress-track {
     height: 4px;
     background: var(--surface);
     border-radius: 99px;
-    margin: 12px 0;
+    margin: 0 0 8px;
     overflow: hidden;
   }
 
@@ -207,6 +288,26 @@
 
   .stat-card.full { grid-column: 1 / -1; }
 
+  .chat-copy {
+    margin-top: 6px;
+    padding: 6px 8px;
+    background: var(--surface);
+    border-radius: 6px;
+    font-size: 0.6rem;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    cursor: pointer;
+    transition: background 0.15s;
+    min-height: 28px;
+  }
+  .chat-copy:hover { background: var(--surface-hover); }
+  .chat-copy .label { font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px; }
+  .chat-copy .value { color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+  .chat-copy.copied { background: rgba(34, 197, 94, 0.15); }
+  .chat-copy.copied .label { color: var(--focus-color); }
+
   .footer {
     margin-top: 10px;
     padding-top: 8px;
@@ -223,6 +324,10 @@
   <span class="header-title">Session Timer</span>
   <div class="header-badges">
     <span class="mode-badge" id="modeBadge">pomodoro</span>
+    <div class="ws-indicator" id="wsIndicator" title="Click to reconnect">
+      <div class="ws-dot" id="wsDot"></div>
+      <span id="wsLabel">WS</span>
+    </div>
     <div class="status-dot" id="statusDot"></div>
   </div>
 </div>
@@ -231,6 +336,30 @@
   <div class="session-badge idle" id="badge">Ready</div>
   <div class="time-display idle" id="time">--:--</div>
   <div class="next-up" id="nextUp"></div>
+</div>
+
+<!-- Control Buttons -->
+<div class="controls" id="controlsRow">
+  <button class="ctrl-btn primary" id="btnStartPause" title="Start / Pause">
+    <span class="icon">▶</span> <span id="btnStartPauseLabel">Start</span>
+  </button>
+  <button class="ctrl-btn" id="btnSkip" title="Skip Session">
+    <span class="icon">⏭</span> Skip
+  </button>
+  <button class="ctrl-btn danger" id="btnStop" title="Stop">
+    <span class="icon">⏹</span> Stop
+  </button>
+</div>
+<div class="controls-row2" id="controlsRow2">
+  <button class="ctrl-btn" id="btnSubTime" title="Subtract Time">
+    <span class="icon">−</span> Time
+  </button>
+  <button class="ctrl-btn" id="btnAddTime" title="Add Time">
+    <span class="icon">+</span> Time
+  </button>
+  <button class="ctrl-btn danger" id="btnReset" title="Reset All">
+    <span class="icon">↺</span> Reset
+  </button>
 </div>
 
 <div class="progress-track">
@@ -263,13 +392,32 @@
   </div>
 </div>
 
-<div class="footer">
-  Control via OBS hotkeys or script panel
+<div class="chat-copy" id="chatCopy" title="Click to copy chat status">
+  <span class="label">Chat</span>
+  <span class="value" id="chatStatus">--</span>
 </div>
 
-<script>
-const POLL_INTERVAL = 500;
+<div class="footer" id="footerText">
+  v5.0 · Hotkeys or buttons to control
+</div>
 
+<script type="module">
+import { OBSWebSocket } from 'https://cdn.jsdelivr.net/npm/obs-websocket-js@5.0.8/+esm';
+
+// ── Config ──
+const POLL_INTERVAL = 500;
+const WS_RECONNECT_DELAY = 5000;
+
+// Parse URL params: ?ws_port=4455&ws_password=xxx
+const params = new URLSearchParams(window.location.search);
+const wsPort = params.get('ws_port') || localStorage.getItem('obs_ws_port') || '4455';
+const wsPassword = params.get('ws_password') || localStorage.getItem('obs_ws_password') || '';
+
+// Persist config
+if (params.get('ws_port')) localStorage.setItem('obs_ws_port', wsPort);
+if (params.get('ws_password')) localStorage.setItem('obs_ws_password', wsPassword);
+
+// ── DOM Elements ──
 const timeEl = document.getElementById('time');
 const badgeEl = document.getElementById('badge');
 const statusDot = document.getElementById('statusDot');
@@ -283,13 +431,104 @@ const focusTimeEl = document.getElementById('focusTime');
 const cycleEl = document.getElementById('cycle');
 const elapsedEl = document.getElementById('elapsed');
 const streamTimeEl = document.getElementById('streamTime');
+const chatStatusEl = document.getElementById('chatStatus');
+const chatCopyEl = document.getElementById('chatCopy');
+const wsDot = document.getElementById('wsDot');
+const wsLabel = document.getElementById('wsLabel');
+const wsIndicator = document.getElementById('wsIndicator');
+const btnStartPause = document.getElementById('btnStartPause');
+const btnStartPauseLabel = document.getElementById('btnStartPauseLabel');
+const btnStop = document.getElementById('btnStop');
+const btnSkip = document.getElementById('btnSkip');
+const btnAddTime = document.getElementById('btnAddTime');
+const btnSubTime = document.getElementById('btnSubTime');
+const btnReset = document.getElementById('btnReset');
 
 const BADGE_CLASSES = {
-  'Focus': 'focus',
-  'Short Break': 'short-break',
-  'Long Break': 'long-break',
+  'Focus': 'focus', 'Short Break': 'short-break', 'Long Break': 'long-break',
 };
 
+// ── OBS WebSocket ──
+const obs = new OBSWebSocket();
+let wsConnected = false;
+let wsReconnectTimer = null;
+
+function setWsStatus(status) {
+  wsDot.className = 'ws-dot ' + status;
+  wsLabel.textContent = status === 'connected' ? 'WS ✓' : status === 'connecting' ? 'WS…' : 'WS ✗';
+  wsConnected = (status === 'connected');
+  // Buttons work regardless — they just trigger hotkeys via WS
+  [btnStartPause, btnStop, btnSkip, btnAddTime, btnSubTime, btnReset].forEach(b => {
+    b.disabled = !wsConnected;
+  });
+}
+
+async function connectWebSocket() {
+  if (wsConnected) return;
+  setWsStatus('connecting');
+  try {
+    await obs.connect(`ws://127.0.0.1:${wsPort}`, wsPassword || undefined);
+    setWsStatus('connected');
+    console.log('[Dock] WebSocket connected');
+  } catch (e) {
+    console.warn('[Dock] WebSocket failed:', e.message);
+    setWsStatus('disconnected');
+    scheduleReconnect();
+  }
+}
+
+obs.on('ConnectionClosed', () => {
+  setWsStatus('disconnected');
+  console.log('[Dock] WebSocket disconnected');
+  scheduleReconnect();
+});
+
+function scheduleReconnect() {
+  if (wsReconnectTimer) clearTimeout(wsReconnectTimer);
+  wsReconnectTimer = setTimeout(connectWebSocket, WS_RECONNECT_DELAY);
+}
+
+wsIndicator.addEventListener('click', () => {
+  if (!wsConnected) connectWebSocket();
+});
+
+// ── Hotkey Triggers via WebSocket ──
+async function triggerHotkey(hotkeyName) {
+  if (!wsConnected) return;
+  try {
+    await obs.call('TriggerHotkeyByName', { hotkeyName });
+  } catch (e) {
+    console.warn('[Dock] Hotkey trigger failed:', hotkeyName, e.message);
+  }
+}
+
+btnStartPause.addEventListener('click', () => triggerHotkey('pomodoro_start_pause'));
+btnStop.addEventListener('click', () => triggerHotkey('pomodoro_stop'));
+btnSkip.addEventListener('click', () => triggerHotkey('pomodoro_skip'));
+btnAddTime.addEventListener('click', () => triggerHotkey('pomodoro_add_time'));
+btnSubTime.addEventListener('click', () => triggerHotkey('pomodoro_sub_time'));
+btnReset.addEventListener('click', async () => {
+  // Reset = Stop then clear. We simulate by triggering stop.
+  // Since there's no dedicated reset hotkey, stop is the closest action.
+  await triggerHotkey('pomodoro_stop');
+});
+
+// ── Chat Copy ──
+chatCopyEl.addEventListener('click', () => {
+  const text = chatStatusEl.textContent;
+  if (text && text !== '--') {
+    navigator.clipboard.writeText(text).then(() => {
+      chatCopyEl.classList.add('copied');
+      chatCopyEl.querySelector('.label').textContent = 'Copied!';
+      setTimeout(() => {
+        chatCopyEl.classList.remove('copied');
+        chatCopyEl.querySelector('.label').textContent = 'Chat';
+      }, 1500);
+    });
+  }
+});
+
+// ── Formatting ──
 function formatTime(seconds) {
   if (seconds == null || seconds < 0) return '--:--';
   const h = Math.floor(seconds / 3600);
@@ -308,6 +547,7 @@ function formatDuration(seconds) {
   return rm === 0 ? `${h}h` : `${h}h ${rm}m`;
 }
 
+// ── State Update ──
 function update(state) {
   if (!state) {
     timeEl.textContent = '--:--';
@@ -326,6 +566,9 @@ function update(state) {
     elapsedEl.textContent = '0%';
     streamTimeEl.textContent = '--';
     modeBadge.textContent = '--';
+    chatStatusEl.textContent = '--';
+    btnStartPauseLabel.textContent = 'Start';
+    btnStartPause.querySelector('.icon').textContent = '▶';
     return;
   }
 
@@ -333,14 +576,27 @@ function update(state) {
           completed_focus_sessions, goal_sessions, total_focus_seconds,
           cycle_count, show_transition, transition_message, timer_mode,
           custom_segment_name, custom_segment_index, custom_segment_count,
-          is_overtime, overtime_seconds, next_session_type, next_session_in,
-          sessions_remaining, break_suggestion, stream_duration } = state;
+          is_overtime, overtime_seconds, next_session_type,
+          sessions_remaining, break_suggestion, stream_duration,
+          chat_status_line } = state;
 
   const mode = timer_mode || 'pomodoro';
   const overtime = is_overtime || false;
 
   // Mode badge
   modeBadge.textContent = mode;
+
+  // Control button state
+  if (is_running && !is_paused) {
+    btnStartPauseLabel.textContent = 'Pause';
+    btnStartPause.querySelector('.icon').textContent = '⏸';
+  } else if (is_running && is_paused) {
+    btnStartPauseLabel.textContent = 'Resume';
+    btnStartPause.querySelector('.icon').textContent = '▶';
+  } else {
+    btnStartPauseLabel.textContent = 'Start';
+    btnStartPause.querySelector('.icon').textContent = '▶';
+  }
 
   // Status dot
   if (overtime) {
@@ -441,8 +697,12 @@ function update(state) {
   } else {
     streamTimeEl.textContent = '--';
   }
+
+  // Chat status line
+  chatStatusEl.textContent = chat_status_line || '--';
 }
 
+// ── Polling ──
 let lastState = null;
 
 async function poll() {
@@ -461,6 +721,10 @@ async function poll() {
 
 poll();
 setInterval(poll, POLL_INTERVAL);
+
+// ── Initialize WebSocket ──
+connectWebSocket();
+
 </script>
 </body>
 </html>
