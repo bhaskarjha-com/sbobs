@@ -54,9 +54,16 @@ shared.js ← Reference utilities (ES module for custom integrations)
 - **HTML/JS**: 2-space indentation, vanilla JS only, no build tools
 - **Naming**: `snake_case` for Lua and JSON fields, `camelCase` for JS variables
 
-### Testing Checklist
+### Testing
 
-Before submitting a PR, verify:
+**Automated tests** — run these first, they must pass:
+
+```bash
+lua tests/test_session_pulse.lua    # 67 tests: CSV, JSON, timing, parsing
+node tests/test_frontend.js         # 55 tests: CSV parser, formatting, badges
+```
+
+**Manual verification in OBS** — verify after code changes:
 
 - [ ] Timer starts, pauses, resumes, stops, and resets correctly
 - [ ] Session transitions work (Focus → Break → Focus)

@@ -463,6 +463,9 @@ sbobs/
 ├── timer_dock.html           # Custom Browser Dock — control panel (streamer)
 ├── timer_stats.html          # Productivity dashboard (streamer)
 ├── timer_remote.html         # Mobile remote control (phone)
+├── tests/                    # Automated test suites
+│   ├── test_session_pulse.lua    # Lua core logic (67 tests)
+│   └── test_frontend.js          # JS frontend logic (55 tests)
 ├── assets/                   # Preview images for documentation
 ├── session_state.json        # Auto-generated state (git-ignored)
 ├── session_history.csv       # Auto-generated log (git-ignored)
@@ -472,6 +475,22 @@ sbobs/
 ├── LICENSE
 └── .gitignore
 ```
+
+---
+
+## Testing
+
+Run the automated test suites before submitting changes:
+
+```bash
+# Lua core tests (CSV, JSON, timing, parsing, state format)
+lua tests/test_session_pulse.lua
+
+# JavaScript frontend tests (CSV parser, formatting, badges)
+node tests/test_frontend.js
+```
+
+Both suites return exit code 1 on failure — safe to use in CI.
 
 ---
 
