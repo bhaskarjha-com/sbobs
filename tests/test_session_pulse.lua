@@ -262,7 +262,7 @@ local function build_state_json()
         '  "session_target_duration": %d,\n' ..
         '  "timestamp": %d\n' ..
         '}',
-        "5.3.1", "pomodoro",
+        "5.4.0", "pomodoro",
         "true", "false",
         "Focus", 1234, 1500,
         266, 18, "15:45",
@@ -282,7 +282,7 @@ local function build_state_json()
 end
 
 local json_out = build_state_json()
-test("JSON contains version", json_out:find('"version": "5.3.1"') ~= nil)
+test("JSON contains version", json_out:find('"version": "5.4.0"') ~= nil)
 test("JSON contains focus_streak", json_out:find('"focus_streak": 2') ~= nil)
 test("JSON contains daily_focus_seconds", json_out:find('"daily_focus_seconds": 7200') ~= nil)
 test("JSON contains daily_goal_seconds", json_out:find('"daily_goal_seconds": 14400') ~= nil)

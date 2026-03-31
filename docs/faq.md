@@ -9,7 +9,7 @@ Common issues and their solutions, organized by category.
 ### Timer doesn't start
 
 1. **Check the Script Log:** Tools → Scripts → Script Log. Look for errors.
-2. **Loaded correctly?** You should see `[SessionPulse] Loaded v5.3.1` in the log.
+2. **Loaded correctly?** You should see `[SessionPulse] Loaded v5.4.0` in the log.
 3. **Hotkey set?** Go to Settings → Hotkeys → search "SessionPulse". Make sure Start/Pause has a key assigned.
 4. **Custom Intervals format:** If using Custom mode, verify the format is `Name:Minutes,Name:Minutes` — no spaces around colons.
 

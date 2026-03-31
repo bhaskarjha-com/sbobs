@@ -2,6 +2,27 @@
 
 All notable changes to SessionPulse are documented here.
 
+## [5.4.0] — 2026-03-31
+
+### Added
+- **🚀 Quick Setup wizard** — one-click button that auto-creates text sources (`SP Timer`, `SP Session`, `SP Count`, `SP Progress`), a ring overlay Browser Source (`SP Overlay`), Focus and Break scenes (`SP Focus`, `SP Break`), wires all sources to script settings, and enables scene switching. Detects platform (GDI+ on Windows, FreeType2 on Mac/Linux). Safe to re-run (skips existing items).
+- **`docs/` directory** — 6 comprehensive guides:
+  - `getting-started.md` — zero-to-hero for complete beginners
+  - `overlay-customization.md` — themes, colors, URL params, setup recipes
+  - `automation-guide.md` — scene switching, volume ducking, mic, filters, chapters, custom intervals
+  - `integrations.md` — Nightbot, Stream Deck, custom tools with code examples
+  - `mobile-remote.md` — phone setup, IP finding, home screen bookmark
+  - `faq.md` — 30+ issues organized by category
+- **`tests/` directory** — automated test suites checked into the repo:
+  - `test_session_pulse.lua` — 67 Lua core logic tests
+  - `test_frontend.js` — 55 JavaScript frontend tests
+- **GitHub Actions CI** — `.github/workflows/test.yml` runs both test suites on push and PR
+- **`.editorconfig`** — enforces 4-space Lua, 2-space HTML/JS, LF line endings
+
+### Changed
+- **README restructured** — trimmed from 584 to ~275 lines; detailed setup moved to `docs/getting-started.md`; added Documentation section linking all 6 guides; Quick Start now highlights the Quick Setup button
+- **CONTRIBUTING.md** — added automated test commands above manual testing checklist
+
 ## [5.3.1] — 2026-03-31
 
 ### Added

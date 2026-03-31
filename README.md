@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-5.3.1-6366f1?style=flat-square" alt="Version"></a>
+  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-5.4.0-6366f1?style=flat-square" alt="Version"></a>
   <a href="https://github.com/bhaskarjha-com/sbobs/actions/workflows/test.yml"><img src="https://img.shields.io/github/actions/workflow/status/bhaskarjha-com/sbobs/test.yml?style=flat-square&label=tests" alt="Tests"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-22c55e?style=flat-square" alt="License"></a>
   <a href="https://obsproject.com"><img src="https://img.shields.io/badge/OBS_Studio-28%2B-1a1a2e?style=flat-square" alt="OBS"></a>
@@ -180,7 +180,7 @@ SessionPulse is a **session automation engine** — not just a timer. It transfo
 
 ```json
 {
-  "version": "5.3.1",
+  "version": "5.4.0",
   "timer_mode": "pomodoro",
   "is_running": true,
   "is_paused": false,

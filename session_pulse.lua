@@ -1,5 +1,5 @@
 --[[
-    SessionPulse v5.3.1
+    SessionPulse v5.4.0
     Session automation engine for OBS Studio.
     Wallclock-based timing, WebSocket dock control, scene/source/filter/volume
     automation, warning alerts, time adjustment, session labeling, daily goal
@@ -17,7 +17,7 @@ if not obs then
     return
 end
 
-local VERSION = "5.3.1"
+local VERSION = "5.4.0"
 
 ------------------------------------------------------------------------
 -- State

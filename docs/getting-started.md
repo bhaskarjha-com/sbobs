@@ -35,7 +35,7 @@ git clone https://github.com/bhaskarjha-com/sbobs.git
 You should see the script appear in the scripts list. The Script Log (bottom panel) should show:
 
 ```
-[SessionPulse] Loaded v5.3.1
+[SessionPulse] Loaded v5.4.0
 [SessionPulse] State saved → session_state.json
 ```
 
