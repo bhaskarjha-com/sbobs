@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Session Timer Overlay</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --focus-color: #22c55e;
+    --focus-glow: rgba(34, 197, 94, 0.3);
+    --short-break-color: #3b82f6;
+    --short-break-glow: rgba(59, 130, 246, 0.3);
+    --long-break-color: #a855f7;
+    --long-break-glow: rgba(168, 85, 247, 0.3);
+    --idle-color: #64748b;
+    --ring-bg: rgba(255, 255, 255, 0.08);
+    --text-primary: #f1f5f9;
+    --text-secondary: rgba(241, 245, 249, 0.6);
+    --size: 220px;
+    --stroke: 8;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: transparent;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--size);
+    height: var(--size);
+    font-family: 'Inter', -apple-system, sans-serif;
+    overflow: hidden;
+  }
+
+  .timer-container {
+    position: relative;
+    width: var(--size);
+    height: var(--size);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* Glow backdrop */
+  .glow {
+    position: absolute;
+    width: 70%;
+    height: 70%;
+    border-radius: 50%;
+    filter: blur(30px);
+    opacity: 0;
+    transition: opacity 0.8s ease, background 0.8s ease;
+  }
+
+  .glow.active {
+    opacity: 1;
+  }
+
+  /* SVG ring */
+  .ring-svg {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    transform: rotate(-90deg);
+  }
+
+  .ring-bg {
+    fill: none;
+    stroke: var(--ring-bg);
+    stroke-width: var(--stroke);
+  }
+
+  .ring-progress {
+    fill: none;
+    stroke: var(--idle-color);
+    stroke-width: var(--stroke);
+    stroke-linecap: round;
+    transition: stroke-dashoffset 0.8s ease, stroke 0.6s ease;
+  }
+
+  /* Center content */
+  .center {
+    position: relative;
+    z-index: 2;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+  }
+
+  .time {
+    font-size: 2.8rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    letter-spacing: -1px;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+    text-shadow: 0 2px 12px rgba(0,0,0,0.5);
+  }
+
+  .session-label {
+    font-size: 0.72rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: var(--text-secondary);
+    transition: color 0.6s ease;
+    text-shadow: 0 1px 6px rgba(0,0,0,0.4);
+  }
+
+  .stats {
+    font-size: 0.62rem;
+    font-weight: 400;
+    color: var(--text-secondary);
+    opacity: 0.7;
+    margin-top: 2px;
+    text-shadow: 0 1px 4px rgba(0,0,0,0.3);
+  }
+
+  /* Transition message */
+  .transition-msg {
+    position: absolute;
+    bottom: 12%;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 3;
+    font-size: 0.65rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    white-space: nowrap;
+    opacity: 0;
+    transition: opacity 0.4s ease;
+    text-shadow: 0 1px 8px rgba(0,0,0,0.5);
+  }
+
+  .transition-msg.visible {
+    opacity: 1;
+  }
+
+  /* Paused pulse */
+  @keyframes pulse-pause {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  .paused .time {
+    animation: pulse-pause 2s ease-in-out infinite;
+  }
+
+  /* Idle state */
+  .idle .time {
+    opacity: 0.5;
+  }
+
+  .idle .session-label {
+    opacity: 0.4;
+  }
+</style>
+</head>
+<body>
+
+<div class="timer-container" id="container">
+  <div class="glow" id="glow"></div>
+
+  <svg class="ring-svg" viewBox="0 0 220 220">
+    <circle class="ring-bg" cx="110" cy="110" r="100"></circle>
+    <circle class="ring-progress" id="ring" cx="110" cy="110" r="100"></circle>
+  </svg>
+
+  <div class="center">
+    <div class="time" id="time">00:00</div>
+    <div class="session-label" id="label">Ready</div>
+    <div class="stats" id="stats"></div>
+  </div>
+
+  <div class="transition-msg" id="transition"></div>
+</div>
+
+<script>
+const POLL_INTERVAL = 500;
+const CIRCUMFERENCE = 2 * Math.PI * 100;
+
+const ring = document.getElementById('ring');
+const timeEl = document.getElementById('time');
+const labelEl = document.getElementById('label');
+const statsEl = document.getElementById('stats');
+const transEl = document.getElementById('transition');
+const glowEl = document.getElementById('glow');
+const container = document.getElementById('container');
+
+// Initialize ring
+ring.style.strokeDasharray = CIRCUMFERENCE;
+ring.style.strokeDashoffset = CIRCUMFERENCE;
+
+const COLORS = {
+  'Focus': { color: '#22c55e', glow: 'rgba(34,197,94,0.25)' },
+  'Short Break': { color: '#3b82f6', glow: 'rgba(59,130,246,0.25)' },
+  'Long Break': { color: '#a855f7', glow: 'rgba(168,85,247,0.25)' },
+};
+
+let lastState = null;
+
+function formatTime(seconds) {
+  if (seconds < 0) seconds = 0;
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  if (h > 0) return `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+  return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+}
+
+function formatDuration(seconds) {
+  const mins = Math.floor(seconds / 60);
+  if (mins < 60) return `${mins}m`;
+  const h = Math.floor(mins / 60);
+  const rm = mins % 60;
+  return rm === 0 ? `${h}h` : `${h}h ${rm}m`;
+}
+
+function update(state) {
+  if (!state) {
+    container.className = 'timer-container idle';
+    timeEl.textContent = '--:--';
+    labelEl.textContent = 'Offline';
+    statsEl.textContent = '';
+    ring.style.strokeDashoffset = CIRCUMFERENCE;
+    glowEl.classList.remove('active');
+    return;
+  }
+
+  const { is_running, is_paused, session_type, current_time, total_time,
+          completed_focus_sessions, goal_sessions, total_focus_seconds,
+          show_transition, transition_message } = state;
+
+  // Container state classes
+  if (!is_running) {
+    container.className = 'timer-container idle';
+  } else if (is_paused) {
+    container.className = 'timer-container paused';
+  } else {
+    container.className = 'timer-container';
+  }
+
+  // Time display
+  timeEl.textContent = formatTime(current_time);
+
+  // Session label
+  if (is_paused) {
+    labelEl.textContent = session_type + ' · Paused';
+  } else if (is_running) {
+    labelEl.textContent = session_type;
+  } else {
+    labelEl.textContent = 'Ready';
+  }
+
+  // Progress ring
+  const progress = total_time > 0 ? (total_time - current_time) / total_time : 0;
+  const offset = CIRCUMFERENCE * (1 - progress);
+  ring.style.strokeDashoffset = offset;
+
+  // Colors
+  const palette = COLORS[session_type] || { color: '#64748b', glow: 'rgba(100,116,139,0.2)' };
+  ring.style.stroke = is_running ? palette.color : '#64748b';
+  labelEl.style.color = is_running ? palette.color : 'rgba(241,245,249,0.6)';
+  glowEl.style.background = palette.glow;
+  glowEl.classList.toggle('active', is_running && !is_paused);
+
+  // Stats
+  if (is_running || completed_focus_sessions > 0) {
+    let stat = `${completed_focus_sessions}/${goal_sessions}`;
+    if (total_focus_seconds > 0) stat += ` · ${formatDuration(total_focus_seconds)}`;
+    statsEl.textContent = stat;
+  } else {
+    statsEl.textContent = '';
+  }
+
+  // Transition message
+  if (show_transition && transition_message) {
+    transEl.textContent = transition_message;
+    transEl.classList.add('visible');
+  } else {
+    transEl.classList.remove('visible');
+  }
+}
+
+async function poll() {
+  try {
+    const resp = await fetch('pomodoro_state.json?t=' + Date.now());
+    if (resp.ok) {
+      const state = await resp.json();
+      lastState = state;
+      update(state);
+    } else {
+      update(null);
+    }
+  } catch (e) {
+    // File might not exist yet — show idle
+    update(lastState);
+  }
+}
+
+// Start polling
+poll();
+setInterval(poll, POLL_INTERVAL);
+</script>
+</body>
+</html>

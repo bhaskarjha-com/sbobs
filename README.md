@@ -14,7 +14,7 @@ Originally designed for "study with me" streams, but works for any timed session
 - **Auto-start toggle** — auto-advance between sessions or pause and wait for manual resume
 - **Session tracking** — "Done: 3/6" counter with configurable goal
 - **Total focus time** — tracks cumulative focus seconds across the entire session
-- **Crash resilience** — auto-saves state every 30 seconds
+- **Crash resilience** — auto-saves state every second
 
 ### OBS Integration
 - **Scene switching** — auto-switch to different OBS scenes per session (Focus Scene, Break Scene, etc.)
@@ -27,6 +27,11 @@ Originally designed for "study with me" streams, but works for any timed session
 - **Source dropdowns** — pick OBS sources and scenes from lists instead of typing names
 - **Progress bar** — character-based bar that fills as the session progresses
 
+### Visual Overlay & Dock
+- **Browser Source overlay** — beautiful circular progress ring with session-colored glow, animated transitions, and transparent background for clean compositing
+- **Dockable control panel** — dark-themed stats dashboard that docks right into the OBS window, showing timer, progress bar, session stats, and cycle info
+- Both update in real-time by polling the script's state file
+
 ### Technical
 - **Pure Lua** — no Python, no external installs, no compilation
 - **Zero dependencies** — runs on any OBS 28+ installation out of the box
@@ -35,9 +40,9 @@ Originally designed for "study with me" streams, but works for any timed session
 
 ## Installation
 
-1. Download `obs_pomodoro_timer.lua`
+1. Download the entire folder (or clone the repo)
 2. Open OBS Studio → **Tools** → **Scripts**
-3. Click **+** and select the `.lua` file
+3. Click **+** and select `obs_pomodoro_timer.lua`
 4. Configure settings in the script panel
 
 ## Setup
@@ -56,6 +61,44 @@ Create these sources in your scene before configuring the script:
 | Alert sound | Media Source | Plays audio alerts on session change |
 
 > **Note**: Source names are picked from dropdowns in the script settings — no manual typing needed.
+
+### Browser Source Overlay (Optional)
+
+Add a beautiful circular timer overlay to your stream:
+
+1. In OBS, add a new **Browser Source** to your scene
+2. Check **"Local file"** and browse to `timer_overlay.html`
+3. Set width to **220** and height to **220**
+4. Position it wherever you want on your stream layout
+5. The overlay automatically connects to the timer — no configuration needed
+
+Features:
+- Circular SVG progress ring that fills as the session progresses
+- Session-colored glow effects (green = Focus, blue = Short Break, purple = Long Break)
+- Smooth pulse animation when paused
+- Transparent background — composites cleanly over any scene
+- Shows session count and total focus time
+
+### Dockable Stats Panel (Optional)
+
+Add a control dashboard that docks into the OBS window:
+
+1. In OBS, go to **View** → **Docks** → **Custom Browser Docks**
+2. Enter dock name: `Session Timer`
+3. Enter URL: `file:///` followed by the full path to `timer_dock.html`
+   - Example: `file:///D:/dev/pro/sbobs/timer_dock.html`
+4. Click **Apply** — the dock appears as a draggable panel
+5. Drag it to dock alongside your other OBS panels
+
+Features:
+- Dark theme that matches the OBS interface
+- Large timer display with colored session badge
+- Linear progress bar
+- Transition message display
+- Stats grid: sessions completed, total focus time, current cycle, progress %
+- Status indicator dot (green = running, yellow blink = paused)
+
+> **Note**: The dock is read-only — control the timer via OBS hotkeys, Stream Deck, or the script panel.
 
 ### Scene Switching (Optional)
 
@@ -100,13 +143,13 @@ The script auto-detects the source type and handles it accordingly.
 
 ## Session Persistence
 
-The timer automatically saves its state to a JSON file (`pomodoro_state.json` next to the script). This means:
+The timer automatically saves its state to `pomodoro_state.json` (next to the script). This means:
 
 - **Stream interrupted?** → Restart OBS, the timer picks up exactly where you left off
-- **OBS crashed?** → State was auto-saved within the last 30 seconds
+- **OBS crashed?** → State was saved within the last second
 - **Changing scenes mid-session?** → Timer state is always preserved
 
-A "Resume Previous Session" button appears in the script panel when a saved state is detected. You can also choose to start fresh.
+A "Resume Previous Session" button appears in the script panel when a saved state is detected.
 
 ## Hotkeys
 
@@ -152,6 +195,19 @@ All settings are available in the script panel (**Tools** → **Scripts** → se
 ### Messages
 All session and transition messages are customizable — change "Focus Time" to "Deep Work", "Short Break" to "Stretch Break", etc.
 
+## File Structure
+
+```
+sbobs/
+├── obs_pomodoro_timer.lua    # Main script (load this in OBS)
+├── timer_overlay.html        # Browser Source overlay (viewers)
+├── timer_dock.html           # Custom Browser Dock (streamer)
+├── pomodoro_state.json       # Auto-generated state file (git-ignored)
+├── README.md
+├── LICENSE
+└── .gitignore
+```
+
 ## Compatibility
 
 - OBS Studio 28+ (chapter markers require 30.2+)
@@ -163,7 +219,7 @@ All session and transition messages are customizable — change "Focus Time" to 
 - [x] **v2.0** — Core rewrite: hotkeys, source dropdowns, bug fixes
 - [x] **v2.1** — Session persistence, background video support
 - [x] **v2.2** — Scene switching, chapter markers, mic control, stream awareness
-- [ ] **v3.0** — Browser Source overlay (circular progress ring, animations, themes)
+- [x] **v3.0** — Browser Source overlay + dockable stats panel
 - [ ] **v3.1** — Multiple timer modes (stopwatch, countdown, custom intervals)
 
 ## Use Cases

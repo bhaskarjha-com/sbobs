@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Session Timer — Control Dock</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #1a1b26;
+    --surface: #24253a;
+    --surface-hover: #2d2e45;
+    --border: rgba(255, 255, 255, 0.06);
+    --text-primary: #e2e8f0;
+    --text-secondary: #94a3b8;
+    --text-muted: #64748b;
+    --focus-color: #22c55e;
+    --short-break-color: #3b82f6;
+    --long-break-color: #a855f7;
+    --idle-color: #475569;
+    --danger: #ef4444;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text-primary);
+    font-family: 'Inter', -apple-system, sans-serif;
+    padding: 12px;
+    min-width: 200px;
+    user-select: none;
+  }
+
+  /* ── Header ── */
+  .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .header-title {
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--text-muted);
+  }
+
+  .status-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--idle-color);
+    transition: background 0.3s;
+  }
+
+  .status-dot.running { background: var(--focus-color); }
+  .status-dot.paused { background: #eab308; animation: blink 1.5s infinite; }
+
+  @keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+
+  /* ── Timer Display ── */
+  .timer-section {
+    text-align: center;
+    padding: 16px 0;
+  }
+
+  .session-badge {
+    display: inline-block;
+    font-size: 0.6rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    padding: 3px 10px;
+    border-radius: 99px;
+    margin-bottom: 8px;
+    transition: background 0.3s, color 0.3s;
+  }
+
+  .session-badge.focus {
+    background: rgba(34, 197, 94, 0.15);
+    color: var(--focus-color);
+  }
+  .session-badge.short-break {
+    background: rgba(59, 130, 246, 0.15);
+    color: var(--short-break-color);
+  }
+  .session-badge.long-break {
+    background: rgba(168, 85, 247, 0.15);
+    color: var(--long-break-color);
+  }
+  .session-badge.idle {
+    background: rgba(71, 85, 105, 0.2);
+    color: var(--text-muted);
+  }
+
+  .time-display {
+    font-size: 2.4rem;
+    font-weight: 700;
+    letter-spacing: -1px;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.1;
+    transition: color 0.3s;
+  }
+
+  .time-display.idle { color: var(--text-muted); }
+
+  /* ── Progress Bar ── */
+  .progress-track {
+    height: 4px;
+    background: var(--surface);
+    border-radius: 99px;
+    margin: 12px 0;
+    overflow: hidden;
+  }
+
+  .progress-fill {
+    height: 100%;
+    border-radius: 99px;
+    width: 0%;
+    transition: width 0.8s ease, background 0.3s;
+  }
+
+  .progress-fill.focus { background: var(--focus-color); }
+  .progress-fill.short-break { background: var(--short-break-color); }
+  .progress-fill.long-break { background: var(--long-break-color); }
+  .progress-fill.idle { background: var(--idle-color); }
+
+  /* ── Transition Message ── */
+  .transition-msg {
+    text-align: center;
+    font-size: 0.72rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+    padding: 4px 0;
+    min-height: 20px;
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+
+  .transition-msg.visible { opacity: 1; }
+
+  /* ── Stats Grid ── */
+  .stats-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    margin-top: 8px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border);
+  }
+
+  .stat-card {
+    background: var(--surface);
+    border-radius: 8px;
+    padding: 8px 10px;
+    text-align: center;
+  }
+
+  .stat-value {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .stat-label {
+    font-size: 0.55rem;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-muted);
+    margin-top: 2px;
+  }
+
+  /* ── Full width stat ── */
+  .stat-card.full {
+    grid-column: 1 / -1;
+  }
+
+  /* ── Footer ── */
+  .footer {
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border);
+    text-align: center;
+    font-size: 0.55rem;
+    color: var(--text-muted);
+  }
+
+  .footer kbd {
+    background: var(--surface);
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-family: inherit;
+    font-size: 0.52rem;
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <span class="header-title">Session Timer</span>
+  <div class="status-dot" id="statusDot"></div>
+</div>
+
+<div class="timer-section">
+  <div class="session-badge idle" id="badge">Ready</div>
+  <div class="time-display idle" id="time">--:--</div>
+</div>
+
+<div class="progress-track">
+  <div class="progress-fill idle" id="progressFill"></div>
+</div>
+
+<div class="transition-msg" id="transition"></div>
+
+<div class="stats-grid">
+  <div class="stat-card">
+    <div class="stat-value" id="sessions">0/0</div>
+    <div class="stat-label">Sessions</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value" id="focusTime">0m</div>
+    <div class="stat-label">Focus Time</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value" id="cycle">0</div>
+    <div class="stat-label">Cycle</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value" id="elapsed">0%</div>
+    <div class="stat-label">Progress</div>
+  </div>
+</div>
+
+<div class="footer">
+  Control via OBS hotkeys or script panel
+</div>
+
+<script>
+const POLL_INTERVAL = 500;
+
+const timeEl = document.getElementById('time');
+const badgeEl = document.getElementById('badge');
+const statusDot = document.getElementById('statusDot');
+const progressFill = document.getElementById('progressFill');
+const transEl = document.getElementById('transition');
+const sessionsEl = document.getElementById('sessions');
+const focusTimeEl = document.getElementById('focusTime');
+const cycleEl = document.getElementById('cycle');
+const elapsedEl = document.getElementById('elapsed');
+
+const BADGE_CLASSES = {
+  'Focus': 'focus',
+  'Short Break': 'short-break',
+  'Long Break': 'long-break',
+};
+
+function formatTime(seconds) {
+  if (seconds == null || seconds < 0) return '--:--';
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  if (h > 0) return `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+  return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+}
+
+function formatDuration(seconds) {
+  if (!seconds || seconds <= 0) return '0m';
+  const mins = Math.floor(seconds / 60);
+  if (mins < 60) return `${mins}m`;
+  const h = Math.floor(mins / 60);
+  const rm = mins % 60;
+  return rm === 0 ? `${h}h` : `${h}h ${rm}m`;
+}
+
+function update(state) {
+  if (!state) {
+    timeEl.textContent = '--:--';
+    timeEl.className = 'time-display idle';
+    badgeEl.textContent = 'Offline';
+    badgeEl.className = 'session-badge idle';
+    statusDot.className = 'status-dot';
+    progressFill.style.width = '0%';
+    progressFill.className = 'progress-fill idle';
+    transEl.classList.remove('visible');
+    sessionsEl.textContent = '0/0';
+    focusTimeEl.textContent = '0m';
+    cycleEl.textContent = '0';
+    elapsedEl.textContent = '0%';
+    return;
+  }
+
+  const { is_running, is_paused, session_type, current_time, total_time,
+          completed_focus_sessions, goal_sessions, total_focus_seconds,
+          cycle_count, show_transition, transition_message } = state;
+
+  const cls = BADGE_CLASSES[session_type] || 'idle';
+
+  // Status dot
+  if (is_running && !is_paused) {
+    statusDot.className = 'status-dot running';
+  } else if (is_running && is_paused) {
+    statusDot.className = 'status-dot paused';
+  } else {
+    statusDot.className = 'status-dot';
+  }
+
+  // Time
+  timeEl.textContent = formatTime(current_time);
+  timeEl.className = is_running ? 'time-display' : 'time-display idle';
+
+  // Badge
+  if (is_paused) {
+    badgeEl.textContent = session_type + ' · Paused';
+  } else if (is_running) {
+    badgeEl.textContent = session_type;
+  } else {
+    badgeEl.textContent = 'Ready';
+  }
+  badgeEl.className = 'session-badge ' + (is_running ? cls : 'idle');
+
+  // Progress bar
+  const progress = total_time > 0 ? ((total_time - current_time) / total_time) * 100 : 0;
+  progressFill.style.width = progress + '%';
+  progressFill.className = 'progress-fill ' + (is_running ? cls : 'idle');
+
+  // Transition message
+  if (show_transition && transition_message) {
+    transEl.textContent = transition_message;
+    transEl.classList.add('visible');
+  } else {
+    transEl.classList.remove('visible');
+  }
+
+  // Stats
+  sessionsEl.textContent = `${completed_focus_sessions || 0}/${goal_sessions || 0}`;
+  focusTimeEl.textContent = formatDuration(total_focus_seconds);
+  cycleEl.textContent = cycle_count || 0;
+  elapsedEl.textContent = Math.round(progress) + '%';
+}
+
+let lastState = null;
+
+async function poll() {
+  try {
+    const resp = await fetch('pomodoro_state.json?t=' + Date.now());
+    if (resp.ok) {
+      lastState = await resp.json();
+      update(lastState);
+    } else {
+      update(null);
+    }
+  } catch (e) {
+    update(lastState);
+  }
+}
+
+poll();
+setInterval(poll, POLL_INTERVAL);
+</script>
+</body>
+</html>

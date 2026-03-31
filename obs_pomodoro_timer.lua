@@ -1,8 +1,8 @@
 --[[
-    OBS Session Timer v2.2.0
+    OBS Session Timer v3.0.0
     Session timer and environment controller for OBS Studio.
     Hotkeys, scene switching, chapter markers, mic control, audio alerts,
-    background media, session persistence, and stream-aware behavior.
+    background media, session persistence, stream awareness, and browser overlay.
 
     https://github.com/bhaskarjha-com/sbobs
     License: MIT
@@ -15,7 +15,7 @@ if not obs then
     return
 end
 
-local VERSION = "2.2.0"
+local VERSION = "3.0.0"
 
 ------------------------------------------------------------------------
 -- State
@@ -145,6 +145,7 @@ local function save_state()
         return
     end
 
+    local total = get_duration_for_session(session_type)
     local json = string.format(
         '{\n' ..
         '  "version": "%s",\n' ..
@@ -152,9 +153,13 @@ local function save_state()
         '  "is_paused": %s,\n' ..
         '  "session_type": "%s",\n' ..
         '  "current_time": %d,\n' ..
+        '  "total_time": %d,\n' ..
         '  "cycle_count": %d,\n' ..
         '  "completed_focus_sessions": %d,\n' ..
+        '  "goal_sessions": %d,\n' ..
         '  "total_focus_seconds": %d,\n' ..
+        '  "show_transition": %s,\n' ..
+        '  "transition_message": "%s",\n' ..
         '  "timestamp": %d\n' ..
         '}',
         VERSION,
@@ -162,9 +167,13 @@ local function save_state()
         tostring(is_paused),
         session_type,
         current_time,
+        total,
         cycle_count,
         completed_focus_sessions,
+        goal_sessions,
         total_focus_seconds,
+        tostring(show_transition),
+        transition_message:gsub('"', '\\"'),
         os.time()
     )
 
@@ -514,11 +523,8 @@ local function timer_tick()
     end
     update_display_texts()
 
-    autosave_counter = autosave_counter + 1
-    if autosave_counter >= autosave_interval then
-        autosave_counter = 0
-        save_state()
-    end
+    -- Write state every tick for browser overlay responsiveness
+    save_state()
 end
 
 ------------------------------------------------------------------------
