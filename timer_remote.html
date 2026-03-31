@@ -310,8 +310,9 @@
   <p>Enter your OBS WebSocket server details.<br>
      Found in OBS → Tools → WebSocket Server Settings.</p>
   <input class="setup-input" id="inputHost" type="text" placeholder="Host (e.g. 192.168.1.5)" value="127.0.0.1"><br>
-  <input class="setup-input" id="inputPort" type="text" placeholder="Port (default: 4455)" value="4455"><br>
+  <input class="setup-input" id="inputPort" type="text" placeholder="WebSocket port (default: 4455)" value="4455"><br>
   <input class="setup-input" id="inputPassword" type="password" placeholder="Password (leave blank if none)"><br>
+  <input class="setup-input" id="inputHttpPort" type="text" placeholder="HTTP file server port (default: 8080)" value="8080"><br>
   <button class="setup-btn" id="connectBtn">Connect</button>
 </div>
 
@@ -347,11 +348,13 @@ const BADGE_MAP = {
 const savedHost = localStorage.getItem('obs_remote_host');
 const savedPort = localStorage.getItem('obs_remote_port');
 const savedPass = localStorage.getItem('obs_remote_password');
+const savedHttpPort = localStorage.getItem('obs_remote_http_port');
 
 if (savedHost && savedPort) {
   document.getElementById('inputHost').value = savedHost;
   document.getElementById('inputPort').value = savedPort;
   document.getElementById('inputPassword').value = savedPass || '';
+  if (savedHttpPort) document.getElementById('inputHttpPort').value = savedHttpPort;
   attemptConnect(savedHost, savedPort, savedPass || '');
 }
 
@@ -359,8 +362,10 @@ connectBtn.addEventListener('click', () => {
   const host = document.getElementById('inputHost').value.trim() || '127.0.0.1';
   const port = document.getElementById('inputPort').value.trim() || '4455';
   const password = document.getElementById('inputPassword').value;
+  const httpPort = document.getElementById('inputHttpPort').value.trim() || '8080';
   localStorage.setItem('obs_remote_host', host);
   localStorage.setItem('obs_remote_port', port);
+  localStorage.setItem('obs_remote_http_port', httpPort);
   if (password) localStorage.setItem('obs_remote_password', password);
   attemptConnect(host, port, password);
 });
@@ -445,7 +450,8 @@ async function pollState() {
   // Otherwise show minimal UI with just controls
   try {
     const host = localStorage.getItem('obs_remote_host') || '127.0.0.1';
-    const resp = await fetch(`http://${host}:8080/session_state.json?t=${Date.now()}`);
+    const httpPort = localStorage.getItem('obs_remote_http_port') || '8080';
+    const resp = await fetch(`http://${host}:${httpPort}/session_state.json?t=${Date.now()}`);
     if (resp.ok) {
       lastState = await resp.json();
       updateUI(lastState);

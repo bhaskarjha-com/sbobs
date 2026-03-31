@@ -1,9 +1,10 @@
 --[[
-    SessionPulse v5.0.0
+    SessionPulse v5.3.1
     Session automation engine for OBS Studio.
     Wallclock-based timing, WebSocket dock control, scene/source/filter/volume
-    automation, warning alerts, time adjustment, session logging, chapter markers,
-    browser overlays, and state persistence with atomic writes.
+    automation, warning alerts, time adjustment, session labeling, daily goal
+    tracking, session logging, chapter markers, "ends at" time display, and
+    state persistence with atomic writes.
 
     https://github.com/bhaskarjha-com/sbobs
     License: MIT
@@ -16,7 +17,7 @@ if not obs then
     return
 end
 
-local VERSION = "5.0.0"
+local VERSION = "5.3.1"
 
 ------------------------------------------------------------------------
 -- State
@@ -46,8 +47,12 @@ local suggestion_index = 0
 local custom_segments = {}
 local custom_segment_index = 1
 local overtime_seconds = 0
+local overtime_epoch = 0         -- os.time() when overtime began (drift-proof)
 local is_overtime = false
 local stream_start_time = 0
+local session_label = ""              -- user-defined label for current work
+local daily_focus_seconds_today = 0   -- computed from CSV on load
+local focus_streak = 0                -- consecutive completed focus sessions
 
 -- Wallclock timing (drift-proof)
 local session_epoch = 0           -- os.time() when current segment counting started
@@ -73,7 +78,7 @@ local fade_source_name = ""
 local fade_from = 1.0
 local fade_to = 1.0
 local fade_elapsed = 0
-local fade_duration = 3
+local fade_duration = 3               -- will be set from volume_fade_duration config
 
 ------------------------------------------------------------------------
 -- Configuration (loaded from settings via script_update)
@@ -136,6 +141,10 @@ local volume_source_name = ""
 local focus_volume = 0.3
 local break_volume = 0.8
 local enable_volume_fade = true
+local volume_fade_duration = 3        -- seconds, user-configurable
+
+-- Daily goal
+local daily_goal_minutes = 0          -- 0 = disabled
 
 -- Filter toggle
 local filter_source_name = ""
@@ -179,6 +188,7 @@ local hotkey_stop = obs.OBS_INVALID_HOTKEY_ID
 local hotkey_skip = obs.OBS_INVALID_HOTKEY_ID
 local hotkey_add_time = obs.OBS_INVALID_HOTKEY_ID
 local hotkey_sub_time = obs.OBS_INVALID_HOTKEY_ID
+local hotkey_reset = obs.OBS_INVALID_HOTKEY_ID
 
 ------------------------------------------------------------------------
 -- Helpers
@@ -293,6 +303,14 @@ local function parse_custom_intervals(text)
             result[#result + 1] = { name = name, duration = tonumber(mins) * 60 }
         end
     end
+    -- Validation feedback in log
+    if #result > 0 then
+        local parts = {}
+        for _, seg in ipairs(result) do
+            parts[#parts + 1] = seg.name .. ":" .. (seg.duration / 60) .. "m"
+        end
+        log("Custom intervals parsed: " .. #result .. " segments → " .. table.concat(parts, ", "))
+    end
     return result
 end
 
@@ -321,19 +339,53 @@ local function log_session(stype, duration, completed)
     if not file then return end
 
     if needs_header then
-        file:write("date,time,session_type,duration_seconds,completed,mode,total_focus\n")
+        file:write("date,time,session_type,duration_seconds,completed,mode,total_focus,label\n")
     end
 
-    file:write(string.format("%s,%s,%s,%d,%s,%s,%d\n",
+    -- CSV-escape label: wrap in quotes, double any internal quotes
+    local csv_label = session_label or ""
+    csv_label = csv_label:gsub('"', '""')
+
+    file:write(string.format("%s,%s,%s,%d,%s,%s,%d,\"%s\"\n",
         os.date("%Y-%m-%d"),
         os.date("%H:%M:%S"),
         stype,
         duration,
         tostring(completed),
         timer_mode,
-        total_focus_seconds
+        total_focus_seconds,
+        csv_label
     ))
     file:close()
+end
+
+-- Read CSV to compute today's total focus seconds (for daily goal tracking)
+local function compute_daily_focus()
+    local path = get_log_file_path()
+    local file = io.open(path, "r")
+    if not file then
+        daily_focus_seconds_today = 0
+        return
+    end
+
+    local today = os.date("%Y-%m-%d")
+    local total = 0
+    local first_line = true
+
+    for line in file:lines() do
+        if first_line then
+            first_line = false  -- skip header
+        else
+            local date, _, stype, dur = line:match("^([^,]+),([^,]+),([^,]+),(%d+)")
+            if date == today and stype == "Focus" then
+                total = total + (tonumber(dur) or 0)
+            end
+        end
+    end
+    file:close()
+
+    daily_focus_seconds_today = total
+    log("Daily focus loaded from CSV: " .. format_duration_human(total))
 end
 
 ------------------------------------------------------------------------
@@ -407,6 +459,20 @@ local function save_state(force)
         if is_paused then chat_status = chat_status .. " [Paused]" end
     end
 
+    -- Compute derived fields for external consumption
+    local elapsed_seconds = get_session_elapsed()
+    local progress_pct = 0
+    if total > 0 then
+        progress_pct = math.min(100, math.floor(((total - display_time) / total) * 100))
+    end
+    if is_overtime then progress_pct = 100 end
+
+    -- "Ends at" local time string (e.g., "15:45")
+    local ends_at = ""
+    if is_running and not is_paused and not is_overtime and timer_mode ~= "stopwatch" then
+        ends_at = os.date("%H:%M", now + display_time)
+    end
+
     local json = string.format(
         '{\n' ..
         '  "version": "%s",\n' ..
@@ -416,6 +482,9 @@ local function save_state(force)
         '  "session_type": "%s",\n' ..
         '  "current_time": %d,\n' ..
         '  "total_time": %d,\n' ..
+        '  "elapsed_seconds": %d,\n' ..
+        '  "progress_percent": %d,\n' ..
+        '  "ends_at": "%s",\n' ..
         '  "cycle_count": %d,\n' ..
         '  "completed_focus_sessions": %d,\n' ..
         '  "goal_sessions": %d,\n' ..
@@ -433,6 +502,10 @@ local function save_state(force)
         '  "break_suggestion": "%s",\n' ..
         '  "stream_duration": %d,\n' ..
         '  "chat_status_line": "%s",\n' ..
+        '  "session_label": "%s",\n' ..
+        '  "daily_focus_seconds": %d,\n' ..
+        '  "daily_goal_seconds": %d,\n' ..
+        '  "focus_streak": %d,\n' ..
         '  "session_epoch": %d,\n' ..
         '  "session_pause_total": %d,\n' ..
         '  "session_target_duration": %d,\n' ..
@@ -445,6 +518,9 @@ local function save_state(force)
         json_escape(session_type),
         display_time,
         total,
+        elapsed_seconds,
+        progress_pct,
+        json_escape(ends_at),
         cycle_count,
         completed_focus_sessions,
         goal_sessions,
@@ -462,6 +538,10 @@ local function save_state(force)
         json_escape(suggestion_text),
         stream_dur,
         json_escape(chat_status),
+        json_escape(session_label),
+        daily_focus_seconds_today + total_focus_seconds,
+        daily_goal_minutes * 60,
+        focus_streak,
         session_epoch,
         session_pause_total,
         session_target_duration,
@@ -779,7 +859,7 @@ local function start_volume_fade(target_vol)
     fade_to = target_vol
     fade_source_name = volume_source_name
     fade_elapsed = 0
-    fade_duration = 3
+    fade_duration = volume_fade_duration
     fade_active = true
 end
 
@@ -807,6 +887,24 @@ end
 ------------------------------------------------------------------------
 -- Filter Toggle
 ------------------------------------------------------------------------
+local function set_filter_enabled(source, filter_name, enabled)
+    -- obs_source_filter_set_enabled(source, name, enabled) requires OBS 30.2+.
+    -- Wrap in pcall for backward compatibility with OBS 28-30.1.
+    local ok, err = pcall(function()
+        obs.obs_source_filter_set_enabled(source, filter_name, enabled)
+    end)
+    if not ok then
+        -- Fallback: try the manual get-filter-by-name approach
+        local filter = obs.obs_source_get_filter_by_name(source, filter_name)
+        if filter then
+            obs.obs_source_set_enabled(filter, enabled)
+            obs.obs_source_release(filter)
+        else
+            log("Warning: filter '" .. filter_name .. "' not found")
+        end
+    end
+end
+
 local function update_filters()
     if not filter_source_name or filter_source_name == "" then return end
 
@@ -820,7 +918,7 @@ local function update_filters()
         for fname in focus_filters_enable:gmatch("([^,]+)") do
             local name = fname:match("^%s*(.-)%s*$")
             if name and name ~= "" then
-                obs.obs_source_filter_set_enabled(source, name, in_focus)
+                set_filter_enabled(source, name, in_focus)
             end
         end
     end
@@ -830,7 +928,7 @@ local function update_filters()
         for fname in focus_filters_disable:gmatch("([^,]+)") do
             local name = fname:match("^%s*(.-)%s*$")
             if name and name ~= "" then
-                obs.obs_source_filter_set_enabled(source, name, not in_focus)
+                set_filter_enabled(source, name, not in_focus)
             end
         end
     end
@@ -995,6 +1093,10 @@ local function switch_session()
         if session_type == "Focus" then
             completed_focus_sessions = completed_focus_sessions + 1
             cycle_count = cycle_count + 1
+            focus_streak = focus_streak + 1
+            if focus_streak > 1 then
+                log("🔥 Focus streak: " .. focus_streak .. " in a row!")
+            end
             get_break_suggestion()
             if cycle_count % long_break_interval == 0 then
                 update_session("Long Break", long_break_duration, transition_to_long_break_message)
@@ -1102,27 +1204,28 @@ local function check_warning_alerts(time_remaining)
     if timer_mode == "stopwatch" then return end
     if is_overtime then return end
 
-    -- 5-minute warning
-    if warning_5min_enabled and not warning_5min_fired and time_remaining <= 300 and time_remaining > 298 then
+    -- 5-minute warning (flag-only: fires once when crossing the threshold)
+    if warning_5min_enabled and not warning_5min_fired and time_remaining <= 300 then
         warning_5min_fired = true
         fire_warning_alert()
         log("Warning: 5 minutes remaining")
     end
 
     -- 1-minute warning
-    if warning_1min_enabled and not warning_1min_fired and time_remaining <= 60 and time_remaining > 58 then
+    if warning_1min_enabled and not warning_1min_fired and time_remaining <= 60 then
         warning_1min_fired = true
         fire_warning_alert()
         log("Warning: 1 minute remaining")
     end
 
-    -- Break ending warning (during breaks only)
+    -- Break / segment ending warning (non-Focus sessions in any timed mode)
     if warning_break_end_enabled and not warning_break_end_fired
-       and session_type ~= "Focus" and timer_mode == "pomodoro"
-       and time_remaining <= warning_break_end_seconds and time_remaining > (warning_break_end_seconds - 2) then
+       and session_type ~= "Focus"
+       and (timer_mode == "pomodoro" or timer_mode == "custom" or timer_mode == "countdown")
+       and time_remaining <= warning_break_end_seconds then
         warning_break_end_fired = true
         fire_warning_alert()
-        log("Warning: break ending in " .. warning_break_end_seconds .. "s")
+        log("Warning: session ending in " .. warning_break_end_seconds .. "s")
     end
 end
 
@@ -1166,11 +1269,13 @@ local function timer_tick()
                 -- Timer hit zero
                 if enable_overtime and not is_overtime then
                     is_overtime = true
+                    overtime_epoch = os.time()
                     overtime_seconds = 0
                     play_alert_sound()
                     log("Overtime started for " .. session_type)
                 elseif is_overtime then
-                    overtime_seconds = overtime_seconds + 1
+                    -- Wallclock-based overtime (drift-proof)
+                    overtime_seconds = os.time() - overtime_epoch
                 else
                     switch_session()
                 end
@@ -1298,13 +1403,37 @@ local function stop_timer()
 
     is_running = false
     is_paused = false
-    session_type = "Focus"
-    current_time = focus_duration
-    cycle_count = 0
     show_transition = false
-    custom_segment_index = 1
     is_overtime = false
     overtime_seconds = 0
+    overtime_epoch = 0
+    focus_streak = 0
+
+    -- Reset to correct initial state for current timer mode
+    if timer_mode == "pomodoro" then
+        session_type = "Focus"
+        current_time = focus_duration
+        cycle_count = 0
+    elseif timer_mode == "countdown" then
+        session_type = "Countdown"
+        current_time = countdown_duration
+    elseif timer_mode == "stopwatch" then
+        session_type = "Stopwatch"
+        current_time = 0
+    elseif timer_mode == "custom" then
+        custom_segment_index = 1
+        if #custom_segments > 0 then
+            session_type = custom_segments[1].name
+            current_time = custom_segments[1].duration
+        else
+            session_type = "Custom"
+            current_time = 0
+        end
+    else
+        session_type = "Focus"
+        current_time = focus_duration
+        cycle_count = 0
+    end
 
     -- Reset wallclock
     session_epoch = 0
@@ -1351,6 +1480,10 @@ local function skip_session()
     end
 
     log("Skipping " .. session_type)
+    -- Skipping a focus session breaks the streak
+    if session_type == "Focus" then
+        focus_streak = 0
+    end
     switch_session()
     if is_paused then
         -- Resume after skip: accumulate pause and clear
@@ -1429,6 +1562,11 @@ end
 local function on_hotkey_sub_time(pressed)
     if not pressed then return end
     subtract_time()
+end
+
+local function on_hotkey_reset(pressed)
+    if not pressed then return end
+    reset_timer()
 end
 
 ------------------------------------------------------------------------
@@ -1539,6 +1677,10 @@ function script_properties()
     obs.obs_properties_add_text(props, "break_suggestions_text",
         "Break Suggestions (comma-separated)", obs.OBS_TEXT_DEFAULT)
     obs.obs_properties_add_bool(props, "enable_session_log", "Log Sessions to CSV File")
+    obs.obs_properties_add_text(props, "session_label",
+        "Session Label (what you're working on)", obs.OBS_TEXT_DEFAULT)
+    obs.obs_properties_add_int(props, "daily_goal_minutes",
+        "Daily Focus Goal (min, 0 = disabled)", 0, 720, 15)
 
     -- ── Text Sources ──
     local src_group = obs.obs_properties_create()
@@ -1579,7 +1721,8 @@ function script_properties()
 
     -- ── Mic Control (checkable group) ──
     local mic_group = obs.obs_properties_create()
-    obs.obs_properties_add_bool(mic_group, "mute_mic_during_focus", "Mute Mic During Focus")
+    obs.obs_properties_add_bool(mic_group, "mute_mic_during_focus",
+        "Mute During Focus (uncheck to mute during breaks instead)")
     p = obs.obs_properties_add_list(mic_group, "mic_source_name",
         "Mic Source", obs.OBS_COMBO_TYPE_LIST, obs.OBS_COMBO_FORMAT_STRING)
     populate_source_list(p)
@@ -1597,7 +1740,8 @@ function script_properties()
     populate_source_list(p)
     obs.obs_properties_add_int_slider(vol_group, "focus_volume", "Focus Volume %", 0, 100, 5)
     obs.obs_properties_add_int_slider(vol_group, "break_volume", "Break Volume %", 0, 100, 5)
-    obs.obs_properties_add_bool(vol_group, "enable_volume_fade", "Smooth Volume Fade (3s)")
+    obs.obs_properties_add_bool(vol_group, "enable_volume_fade", "Smooth Volume Fade")
+    obs.obs_properties_add_int(vol_group, "volume_fade_duration", "Fade Duration (sec)", 1, 15, 1)
     obs.obs_properties_add_group(props, "volume_ducking_group", "Volume Ducking",
         obs.OBS_GROUP_NORMAL, vol_group)
 
@@ -1693,6 +1837,9 @@ function script_defaults(settings)
     obs.obs_data_set_default_int(settings, "focus_volume", 30)
     obs.obs_data_set_default_int(settings, "break_volume", 80)
     obs.obs_data_set_default_int(settings, "time_adjust_increment", 5)
+    obs.obs_data_set_default_int(settings, "volume_fade_duration", 3)
+    obs.obs_data_set_default_int(settings, "daily_goal_minutes", 0)
+    obs.obs_data_set_default_string(settings, "session_label", "")
     obs.obs_data_set_default_string(settings, "custom_intervals_text", "Work:25,Break:5,Work:25,Break:5")
     obs.obs_data_set_default_string(settings, "break_suggestions_text",
         "Stretch!,Hydrate!,Look away from screen,Take a walk,Deep breaths,Roll your shoulders,Stand up,Rest your eyes")
@@ -1738,6 +1885,8 @@ local function update_timer_config(settings)
     parsed_suggestions = parse_suggestions(break_suggestions_text)
 
     enable_session_log = obs.obs_data_get_bool(settings, "enable_session_log")
+    session_label = obs.obs_data_get_string(settings, "session_label")
+    daily_goal_minutes = obs.obs_data_get_int(settings, "daily_goal_minutes")
 
     -- Warning alerts
     enable_warning_alerts = obs.obs_data_get_bool(settings, "enable_warning_alerts")
@@ -1767,6 +1916,7 @@ local function update_automation_config(settings)
     focus_volume = obs.obs_data_get_int(settings, "focus_volume") / 100.0
     break_volume = obs.obs_data_get_int(settings, "break_volume") / 100.0
     enable_volume_fade = obs.obs_data_get_bool(settings, "enable_volume_fade")
+    volume_fade_duration = obs.obs_data_get_int(settings, "volume_fade_duration")
 
     filter_source_name = obs.obs_data_get_string(settings, "filter_source_name")
     focus_filters_enable = obs.obs_data_get_string(settings, "focus_filters_enable")
@@ -1832,6 +1982,8 @@ function script_load(settings)
         "session_pulse_add_time", "SessionPulse: Add Time", on_hotkey_add_time)
     hotkey_sub_time = obs.obs_hotkey_register_frontend(
         "session_pulse_sub_time", "SessionPulse: Subtract Time", on_hotkey_sub_time)
+    hotkey_reset = obs.obs_hotkey_register_frontend(
+        "session_pulse_reset", "SessionPulse: Reset All", on_hotkey_reset)
 
     local function load_hotkey(id, key)
         local a = obs.obs_data_get_array(settings, key)
@@ -1843,6 +1995,7 @@ function script_load(settings)
     load_hotkey(hotkey_skip, "session_pulse_hotkey_skip")
     load_hotkey(hotkey_add_time, "session_pulse_hotkey_add_time")
     load_hotkey(hotkey_sub_time, "session_pulse_hotkey_sub_time")
+    load_hotkey(hotkey_reset, "session_pulse_hotkey_reset")
 
     obs.obs_frontend_add_event_callback(on_frontend_event)
 
@@ -1851,6 +2004,9 @@ function script_load(settings)
         has_pending_resume = true
         log("Found saved session — use 'Resume Previous Session' button to restore")
     end
+
+    -- Load today's focus total from CSV for daily goal tracking
+    compute_daily_focus()
 
     log("Loaded v" .. VERSION)
 end
@@ -1866,6 +2022,7 @@ function script_save(settings)
     save_hotkey(hotkey_skip, "session_pulse_hotkey_skip")
     save_hotkey(hotkey_add_time, "session_pulse_hotkey_add_time")
     save_hotkey(hotkey_sub_time, "session_pulse_hotkey_sub_time")
+    save_hotkey(hotkey_reset, "session_pulse_hotkey_reset")
 
     if is_running then save_state(true) end
 end
@@ -1883,5 +2040,6 @@ function script_unload()
     obs.obs_hotkey_unregister(hotkey_skip)
     obs.obs_hotkey_unregister(hotkey_add_time)
     obs.obs_hotkey_unregister(hotkey_sub_time)
+    obs.obs_hotkey_unregister(hotkey_reset)
     log("Unloaded")
 end

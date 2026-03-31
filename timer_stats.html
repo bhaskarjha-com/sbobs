@@ -194,6 +194,15 @@
     font-variant-numeric: tabular-nums;
   }
 
+  .label-cell {
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text-muted);
+    font-style: italic;
+  }
+
   .log-table tr:last-child td { border-bottom: none; }
   .log-table tr:hover td { background: var(--surface-hover); }
 
@@ -291,14 +300,37 @@ function formatDuration(seconds) {
   return rm === 0 ? `${h}h` : `${h}h ${rm}m`;
 }
 
+function parseCsvLine(line) {
+  const cols = [];
+  let i = 0, field = '';
+  while (i < line.length) {
+    if (line[i] === '"') {
+      i++; // skip opening quote
+      while (i < line.length) {
+        if (line[i] === '"' && line[i + 1] === '"') { field += '"'; i += 2; }
+        else if (line[i] === '"') { i++; break; }
+        else { field += line[i]; i++; }
+      }
+      if (line[i] === ',') i++; // skip delimiter after closing quote
+      cols.push(field); field = '';
+    } else {
+      const next = line.indexOf(',', i);
+      if (next === -1) { cols.push(line.slice(i)); break; }
+      cols.push(line.slice(i, next));
+      i = next + 1;
+    }
+  }
+  return cols;
+}
+
 function parseCsv(text) {
   const lines = text.trim().split('\n');
   if (lines.length < 2) return [];
-  const headers = lines[0].split(',');
+  const headers = lines[0].split(',').map(h => h.trim());
   return lines.slice(1).map(line => {
-    const cols = line.split(',');
+    const cols = parseCsvLine(line);
     const row = {};
-    headers.forEach((h, i) => row[h.trim()] = (cols[i] || '').trim());
+    headers.forEach((h, i) => row[h] = (cols[i] || '').trim());
     return row;
   }).filter(r => r.date);
 }
@@ -427,6 +459,10 @@ function renderLog(rows) {
   const container = document.getElementById('logContainer');
   const emptyState = document.getElementById('emptyState');
 
+  // Clear previous table renders (prevents duplication on auto-refresh)
+  const existing = container.querySelector('.log-table');
+  if (existing) existing.remove();
+
   if (rows.length === 0) {
     emptyState.style.display = 'block';
     return;
@@ -445,6 +481,7 @@ function renderLog(rows) {
         <th>Time</th>
         <th>Type</th>
         <th>Duration</th>
+        <th>Label</th>
         <th>Done</th>
       </tr>
     </thead>
@@ -461,11 +498,14 @@ function renderLog(rows) {
       : r.session_type?.includes('Long') ? 'Long'
       : 'other';
 
+    const label = r.label || '';
+    const safeLabel = label.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     tr.innerHTML = `
       <td>${r.date || '--'}</td>
       <td>${r.time || '--'}</td>
       <td><span class="type-badge ${typeClass}">${r.session_type || '--'}</span></td>
       <td>${formatDuration(dur)}</td>
+      <td class="label-cell" title="${safeLabel}">${safeLabel || '—'}</td>
       <td class="${completed ? 'completed-yes' : 'completed-no'}">${completed ? '✓' : '✗'}</td>
     `;
     tbody.appendChild(tr);

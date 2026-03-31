@@ -302,7 +302,7 @@ function update(state) {
           show_transition, transition_message, timer_mode,
           custom_segment_name, custom_segment_index, custom_segment_count,
           is_overtime, overtime_seconds, next_session_type, next_session_in,
-          sessions_remaining, break_suggestion, stream_duration } = state;
+          sessions_remaining, break_suggestion, stream_duration, ends_at } = state;
 
   const mode = timer_mode || 'pomodoro';
   const overtime = is_overtime || false;
@@ -377,8 +377,11 @@ function update(state) {
   }
 
   // Next up indicator
-  if (SHOW_NEXT && next_session_type && is_running && !overtime) {
-    nextUpEl.textContent = `Next: ${next_session_type}`;
+  if (SHOW_NEXT && is_running && !overtime) {
+    let nextText = '';
+    if (next_session_type) nextText = `Next: ${next_session_type}`;
+    if (ends_at) nextText += nextText ? ` · ${ends_at}` : `Ends ${ends_at}`;
+    nextUpEl.textContent = nextText;
   } else {
     nextUpEl.textContent = '';
   }

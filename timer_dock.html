@@ -397,8 +397,23 @@
   <span class="value" id="chatStatus">--</span>
 </div>
 
+<div class="chat-copy" id="labelRow" style="display:none" title="Session label">
+  <span class="label">Label</span>
+  <span class="value" id="sessionLabel">--</span>
+</div>
+
+<div id="dailyGoalRow" style="display:none; padding:6px 16px;">
+  <div style="display:flex; justify-content:space-between; font-size:11px; color:#94a3b8; margin-bottom:4px;">
+    <span id="dailyGoalText">Daily Goal</span>
+    <span id="dailyGoalPct">0%</span>
+  </div>
+  <div class="progress-track" style="height:6px;">
+    <div class="progress-fill" id="dailyGoalFill" style="width:0%; transition:width 0.5s;"></div>
+  </div>
+</div>
+
 <div class="footer" id="footerText">
-  v5.0 · Hotkeys or buttons to control
+  v5.3.1 · Hotkeys or buttons to control
 </div>
 
 <script type="module">
@@ -507,11 +522,7 @@ btnStop.addEventListener('click', () => triggerHotkey('session_pulse_stop'));
 btnSkip.addEventListener('click', () => triggerHotkey('session_pulse_skip'));
 btnAddTime.addEventListener('click', () => triggerHotkey('session_pulse_add_time'));
 btnSubTime.addEventListener('click', () => triggerHotkey('session_pulse_sub_time'));
-btnReset.addEventListener('click', async () => {
-  // Reset = Stop then clear. We simulate by triggering stop.
-  // Since there's no dedicated reset hotkey, stop is the closest action.
-  await triggerHotkey('session_pulse_stop');
-});
+btnReset.addEventListener('click', () => triggerHotkey('session_pulse_reset'));
 
 // ── Chat Copy ──
 chatCopyEl.addEventListener('click', () => {
@@ -578,7 +589,7 @@ function update(state) {
           custom_segment_name, custom_segment_index, custom_segment_count,
           is_overtime, overtime_seconds, next_session_type,
           sessions_remaining, break_suggestion, stream_duration,
-          chat_status_line } = state;
+          chat_status_line, ends_at, progress_percent } = state;
 
   const mode = timer_mode || 'pomodoro';
   const overtime = is_overtime || false;
@@ -670,16 +681,24 @@ function update(state) {
     suggestionEl.textContent = '';
   }
 
-  // Next up
+  // Next up + ends at
   if (next_session_type && is_running && !overtime) {
-    nextUpEl.textContent = `Next: ${next_session_type}`;
+    let nextText = `Next: ${next_session_type}`;
+    if (ends_at) nextText += ` · Ends ${ends_at}`;
+    nextUpEl.textContent = nextText;
+  } else if (ends_at && is_running && !overtime) {
+    nextUpEl.textContent = `Ends at ${ends_at}`;
   } else {
     nextUpEl.textContent = '';
   }
 
   // Stats
   if (mode === 'pomodoro') {
-    sessionsEl.textContent = `${completed_focus_sessions || 0}/${goal_sessions || 0}`;
+    let sessText = `${completed_focus_sessions || 0}/${goal_sessions || 0}`;
+    if (state.focus_streak && state.focus_streak > 1) {
+      sessText += ` 🔥${state.focus_streak}`;
+    }
+    sessionsEl.textContent = sessText;
     cycleEl.textContent = cycle_count || 0;
   } else if (mode === 'custom') {
     sessionsEl.textContent = `${custom_segment_index || 1}/${custom_segment_count || 0}`;
@@ -689,7 +708,7 @@ function update(state) {
     cycleEl.textContent = '-';
   }
   focusTimeEl.textContent = formatDuration(total_focus_seconds);
-  elapsedEl.textContent = Math.round(progress) + '%';
+  elapsedEl.textContent = (progress_percent != null ? progress_percent : Math.round(progress)) + '%';
 
   // Stream duration
   if (stream_duration && stream_duration > 0) {
@@ -700,6 +719,38 @@ function update(state) {
 
   // Chat status line
   chatStatusEl.textContent = chat_status_line || '--';
+
+  // Session label
+  const labelRow = document.getElementById('labelRow');
+  const labelEl = document.getElementById('sessionLabel');
+  if (state.session_label && state.session_label.trim()) {
+    labelRow.style.display = '';
+    labelEl.textContent = state.session_label;
+  } else {
+    labelRow.style.display = 'none';
+  }
+
+  // Daily goal
+  const goalRow = document.getElementById('dailyGoalRow');
+  const goalFill = document.getElementById('dailyGoalFill');
+  const goalText = document.getElementById('dailyGoalText');
+  const goalPct = document.getElementById('dailyGoalPct');
+  if (state.daily_goal_seconds && state.daily_goal_seconds > 0) {
+    goalRow.style.display = '';
+    const dailySec = state.daily_focus_seconds || 0;
+    const goalSec = state.daily_goal_seconds;
+    const pct = Math.min(100, Math.round((dailySec / goalSec) * 100));
+    goalFill.style.width = pct + '%';
+    goalPct.textContent = pct + '%';
+    goalText.textContent = `Daily: ${formatDuration(dailySec)} / ${formatDuration(goalSec)}`;
+    if (pct >= 100) {
+      goalFill.style.background = '#22c55e';
+    } else {
+      goalFill.style.background = '';
+    }
+  } else {
+    goalRow.style.display = 'none';
+  }
 }
 
 // ── Polling ──
