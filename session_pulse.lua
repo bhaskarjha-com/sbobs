@@ -1709,7 +1709,9 @@ function script_defaults(settings)
     obs.obs_data_set_default_string(settings, "transition_to_long_break_message", "Time for a long break!")
 end
 
-function script_update(settings)
+-- Split into helpers to stay under Lua 5.1's 60-upvalue limit per function
+
+local function update_timer_config(settings)
     timer_mode = obs.obs_data_get_string(settings, "timer_mode")
 
     focus_duration = obs.obs_data_get_int(settings, "focus_duration") * 60
@@ -1739,7 +1741,9 @@ function script_update(settings)
     warning_1min_enabled = obs.obs_data_get_bool(settings, "warning_1min_enabled")
     warning_break_end_enabled = obs.obs_data_get_bool(settings, "warning_break_end_enabled")
     warning_break_end_seconds = obs.obs_data_get_int(settings, "warning_break_end_seconds")
+end
 
+local function update_automation_config(settings)
     auto_start_on_stream = obs.obs_data_get_bool(settings, "auto_start_on_stream")
     auto_stop_on_stream_end = obs.obs_data_get_bool(settings, "auto_stop_on_stream_end")
     enable_chapter_markers = obs.obs_data_get_bool(settings, "enable_chapter_markers")
@@ -1763,7 +1767,9 @@ function script_update(settings)
     filter_source_name = obs.obs_data_get_string(settings, "filter_source_name")
     focus_filters_enable = obs.obs_data_get_string(settings, "focus_filters_enable")
     focus_filters_disable = obs.obs_data_get_string(settings, "focus_filters_disable")
+end
 
+local function update_source_config(settings)
     focus_count_source = obs.obs_data_get_string(settings, "focus_count_source")
     message_source = obs.obs_data_get_string(settings, "message_source")
     time_source = obs.obs_data_get_string(settings, "time_source")
@@ -1785,6 +1791,12 @@ function script_update(settings)
     focus_background_media = obs.obs_data_get_string(settings, "focus_background_media")
     short_break_background_media = obs.obs_data_get_string(settings, "short_break_background_media")
     long_break_background_media = obs.obs_data_get_string(settings, "long_break_background_media")
+end
+
+function script_update(settings)
+    update_timer_config(settings)
+    update_automation_config(settings)
+    update_source_config(settings)
 
     if not is_running then
         if timer_mode == "pomodoro" then
