@@ -548,6 +548,10 @@ local function delete_state_file()
     os.remove(get_state_file_path() .. ".tmp")
 end
 
+-- Forward declarations (referenced by apply_saved_state before definition)
+local update_display_texts
+local update_background_media
+
 local function apply_saved_state(state)
     session_type = state.session_type or "Focus"
     current_time = state.current_time
@@ -616,7 +620,7 @@ local function update_obs_source_text(source_name, text)
     end
 end
 
-local function update_background_media()
+update_background_media = function()
     if not background_media_source or background_media_source == "" then return end
 
     local media_map = {
@@ -882,7 +886,7 @@ local function get_session_message()
     return long_break_message
 end
 
-local function update_display_texts()
+update_display_texts = function()
     -- Focus count
     if timer_mode == "pomodoro" then
         update_obs_source_text(focus_count_source,
