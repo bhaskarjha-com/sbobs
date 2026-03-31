@@ -1,8 +1,9 @@
 --[[
-    OBS Session Timer v4.0.0
+    OBS Session Timer v5.0.0
     Multi-mode session orchestrator for OBS Studio.
-    Timer modes, scene/source/filter/volume automation, session logging,
-    chapter markers, browser overlays, and persistence.
+    Wallclock-based timing, WebSocket dock control, scene/source/filter/volume
+    automation, warning alerts, time adjustment, session logging, chapter markers,
+    browser overlays, and state persistence with atomic writes.
 
     https://github.com/bhaskarjha-com/sbobs
     License: MIT
