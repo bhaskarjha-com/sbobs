@@ -15,6 +15,12 @@
     --short-break-glow: rgba(59, 130, 246, 0.3);
     --long-break-color: #a855f7;
     --long-break-glow: rgba(168, 85, 247, 0.3);
+    --stopwatch-color: #f59e0b;
+    --stopwatch-glow: rgba(245, 158, 11, 0.3);
+    --countdown-color: #f97316;
+    --countdown-glow: rgba(249, 115, 22, 0.3);
+    --overtime-color: #ef4444;
+    --overtime-glow: rgba(239, 68, 68, 0.4);
     --idle-color: #64748b;
     --ring-bg: rgba(255, 255, 255, 0.08);
     --text-primary: #f1f5f9;
@@ -45,7 +51,6 @@
     justify-content: center;
   }
 
-  /* Glow backdrop */
   .glow {
     position: absolute;
     width: 70%;
@@ -55,12 +60,8 @@
     opacity: 0;
     transition: opacity 0.8s ease, background 0.8s ease;
   }
+  .glow.active { opacity: 1; }
 
-  .glow.active {
-    opacity: 1;
-  }
-
-  /* SVG ring */
   .ring-svg {
     position: absolute;
     width: 100%;
@@ -82,7 +83,6 @@
     transition: stroke-dashoffset 0.8s ease, stroke 0.6s ease;
   }
 
-  /* Center content */
   .center {
     position: relative;
     z-index: 2;
@@ -101,6 +101,11 @@
     line-height: 1;
     font-variant-numeric: tabular-nums;
     text-shadow: 0 2px 12px rgba(0,0,0,0.5);
+    transition: color 0.4s ease;
+  }
+
+  .time.overtime {
+    color: var(--overtime-color);
   }
 
   .session-label {
@@ -122,7 +127,15 @@
     text-shadow: 0 1px 4px rgba(0,0,0,0.3);
   }
 
-  /* Transition message */
+  .next-up {
+    font-size: 0.52rem;
+    font-weight: 400;
+    color: var(--text-secondary);
+    opacity: 0.5;
+    margin-top: 1px;
+    text-shadow: 0 1px 4px rgba(0,0,0,0.3);
+  }
+
   .transition-msg {
     position: absolute;
     bottom: 12%;
@@ -137,28 +150,40 @@
     transition: opacity 0.4s ease;
     text-shadow: 0 1px 8px rgba(0,0,0,0.5);
   }
+  .transition-msg.visible { opacity: 1; }
 
-  .transition-msg.visible {
-    opacity: 1;
-  }
-
-  /* Paused pulse */
   @keyframes pulse-pause {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.4; }
   }
+  .paused .time { animation: pulse-pause 2s ease-in-out infinite; }
 
-  .paused .time {
-    animation: pulse-pause 2s ease-in-out infinite;
+  @keyframes pulse-overtime {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
   }
+  .overtime .ring-progress { animation: pulse-overtime 1.5s ease-in-out infinite; }
 
-  /* Idle state */
-  .idle .time {
-    opacity: 0.5;
-  }
+  .idle .time { opacity: 0.5; }
+  .idle .session-label { opacity: 0.4; }
 
-  .idle .session-label {
-    opacity: 0.4;
+  /* ── Themes ── */
+  body.theme-neon .ring-progress { stroke-width: 6; filter: drop-shadow(0 0 8px currentColor); }
+  body.theme-neon .glow { filter: blur(40px); }
+
+  body.theme-minimal .glow { display: none; }
+  body.theme-minimal .ring-bg { stroke-width: 4; }
+  body.theme-minimal .ring-progress { stroke-width: 4; }
+  body.theme-minimal .time { font-weight: 300; font-size: 2.4rem; }
+
+  body.theme-glassmorphism .timer-container::before {
+    content: '';
+    position: absolute;
+    inset: 15%;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.05);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255,255,255,0.08);
   }
 </style>
 </head>
@@ -166,22 +191,56 @@
 
 <div class="timer-container" id="container">
   <div class="glow" id="glow"></div>
-
   <svg class="ring-svg" viewBox="0 0 220 220">
     <circle class="ring-bg" cx="110" cy="110" r="100"></circle>
     <circle class="ring-progress" id="ring" cx="110" cy="110" r="100"></circle>
   </svg>
-
   <div class="center">
     <div class="time" id="time">00:00</div>
     <div class="session-label" id="label">Ready</div>
     <div class="stats" id="stats"></div>
+    <div class="next-up" id="nextUp"></div>
   </div>
-
   <div class="transition-msg" id="transition"></div>
 </div>
 
 <script>
+// ── URL Configuration ──
+const params = new URLSearchParams(window.location.search);
+const THEME = params.get('theme') || 'default';
+const SIZE = parseInt(params.get('size')) || 220;
+const SHOW_STATS = params.get('showStats') !== 'false';
+const SHOW_NEXT = params.get('showNext') !== 'false';
+const CUSTOM_FONT = params.get('font');
+
+// Apply theme
+if (THEME !== 'default') document.body.classList.add('theme-' + THEME);
+
+// Apply size
+if (SIZE !== 220) {
+  document.documentElement.style.setProperty('--size', SIZE + 'px');
+  document.body.style.width = SIZE + 'px';
+  document.body.style.height = SIZE + 'px';
+}
+
+// Apply custom font
+if (CUSTOM_FONT) {
+  const link = document.createElement('link');
+  link.href = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(CUSTOM_FONT)}:wght@300;400;600;700&display=swap`;
+  link.rel = 'stylesheet';
+  document.head.appendChild(link);
+  document.body.style.fontFamily = `'${CUSTOM_FONT}', 'Inter', sans-serif`;
+}
+
+// Apply custom colors from URL
+['focus', 'short_break', 'long_break', 'stopwatch', 'countdown'].forEach(key => {
+  const color = params.get('color_' + key);
+  if (color) {
+    const hex = color.startsWith('#') ? color : '#' + color;
+    document.documentElement.style.setProperty('--' + key.replace('_', '-') + '-color', hex);
+  }
+});
+
 const POLL_INTERVAL = 500;
 const CIRCUMFERENCE = 2 * Math.PI * 100;
 
@@ -189,19 +248,22 @@ const ring = document.getElementById('ring');
 const timeEl = document.getElementById('time');
 const labelEl = document.getElementById('label');
 const statsEl = document.getElementById('stats');
+const nextUpEl = document.getElementById('nextUp');
 const transEl = document.getElementById('transition');
 const glowEl = document.getElementById('glow');
 const container = document.getElementById('container');
 
-// Initialize ring
 ring.style.strokeDasharray = CIRCUMFERENCE;
 ring.style.strokeDashoffset = CIRCUMFERENCE;
 
 const COLORS = {
-  'Focus': { color: '#22c55e', glow: 'rgba(34,197,94,0.25)' },
-  'Short Break': { color: '#3b82f6', glow: 'rgba(59,130,246,0.25)' },
-  'Long Break': { color: '#a855f7', glow: 'rgba(168,85,247,0.25)' },
+  'Focus':       { color: 'var(--focus-color)',       glow: 'var(--focus-glow)' },
+  'Short Break': { color: 'var(--short-break-color)', glow: 'var(--short-break-glow)' },
+  'Long Break':  { color: 'var(--long-break-color)',  glow: 'var(--long-break-glow)' },
+  'Stopwatch':   { color: 'var(--stopwatch-color)',   glow: 'var(--stopwatch-glow)' },
+  'Countdown':   { color: 'var(--countdown-color)',   glow: 'var(--countdown-glow)' },
 };
+const OVERTIME_PALETTE = { color: 'var(--overtime-color)', glow: 'var(--overtime-glow)' };
 
 let lastState = null;
 
@@ -226,8 +288,10 @@ function update(state) {
   if (!state) {
     container.className = 'timer-container idle';
     timeEl.textContent = '--:--';
+    timeEl.classList.remove('overtime');
     labelEl.textContent = 'Offline';
     statsEl.textContent = '';
+    nextUpEl.textContent = '';
     ring.style.strokeDashoffset = CIRCUMFERENCE;
     glowEl.classList.remove('active');
     return;
@@ -236,61 +300,71 @@ function update(state) {
   const { is_running, is_paused, session_type, current_time, total_time,
           completed_focus_sessions, goal_sessions, total_focus_seconds,
           show_transition, transition_message, timer_mode,
-          custom_segment_name, custom_segment_index, custom_segment_count } = state;
+          custom_segment_name, custom_segment_index, custom_segment_count,
+          is_overtime, overtime_seconds, next_session_type, next_session_in,
+          sessions_remaining, break_suggestion, stream_duration } = state;
 
   const mode = timer_mode || 'pomodoro';
+  const overtime = is_overtime || false;
 
   // Container state classes
-  if (!is_running) {
-    container.className = 'timer-container idle';
-  } else if (is_paused) {
-    container.className = 'timer-container paused';
-  } else {
-    container.className = 'timer-container';
-  }
+  let cls = 'timer-container';
+  if (!is_running) cls += ' idle';
+  else if (is_paused) cls += ' paused';
+  if (overtime) cls += ' overtime';
+  container.className = cls;
 
   // Time display
-  timeEl.textContent = formatTime(current_time);
+  if (overtime) {
+    timeEl.textContent = '+' + formatTime(overtime_seconds || 0);
+    timeEl.classList.add('overtime');
+  } else {
+    timeEl.textContent = formatTime(current_time);
+    timeEl.classList.remove('overtime');
+  }
 
   // Session label
   let label = session_type || 'Ready';
-  if (mode === 'custom' && custom_segment_name) {
-    label = custom_segment_name;
-  } else if (mode === 'stopwatch') {
-    label = 'Stopwatch';
-  } else if (mode === 'countdown') {
-    label = 'Countdown';
-  }
-  if (is_paused) label += ' · Paused';
+  if (mode === 'custom' && custom_segment_name) label = custom_segment_name;
+  else if (mode === 'stopwatch') label = 'Stopwatch';
+  else if (mode === 'countdown') label = 'Countdown';
+  if (overtime) label += ' · Overtime';
+  else if (is_paused) label += ' · Paused';
   if (!is_running) label = 'Ready';
   labelEl.textContent = label;
 
   // Progress ring
   let progress = 0;
-  if (mode === 'stopwatch') {
-    // Continuous rotation — fills over 60 minutes then resets
+  if (overtime) {
+    progress = 1; // Full ring in overtime
+  } else if (mode === 'stopwatch') {
     progress = (current_time % 3600) / 3600;
   } else if (total_time > 0) {
     progress = (total_time - current_time) / total_time;
   }
   ring.style.strokeDashoffset = CIRCUMFERENCE * (1 - Math.max(0, Math.min(1, progress)));
 
-  // Colors — extended for new modes
-  const EXTRA_COLORS = {
-    'Stopwatch': { color: '#f59e0b', glow: 'rgba(245,158,11,0.25)' },
-    'Countdown': { color: '#f97316', glow: 'rgba(249,115,22,0.25)' },
-  };
-  let palette = COLORS[session_type] || EXTRA_COLORS[session_type] || EXTRA_COLORS[label] || { color: '#22c55e', glow: 'rgba(34,197,94,0.25)' };
-  if (mode === 'stopwatch') palette = EXTRA_COLORS['Stopwatch'];
-  if (mode === 'countdown') palette = EXTRA_COLORS['Countdown'];
+  // Colors
+  let palette;
+  if (overtime) {
+    palette = OVERTIME_PALETTE;
+  } else if (mode === 'stopwatch') {
+    palette = COLORS['Stopwatch'];
+  } else if (mode === 'countdown') {
+    palette = COLORS['Countdown'];
+  } else {
+    palette = COLORS[session_type] || COLORS['Focus'];
+  }
 
-  ring.style.stroke = is_running ? palette.color : '#64748b';
-  labelEl.style.color = is_running ? palette.color : 'rgba(241,245,249,0.6)';
+  ring.style.stroke = is_running ? palette.color : 'var(--idle-color)';
+  labelEl.style.color = is_running ? palette.color : 'var(--text-secondary)';
   glowEl.style.background = palette.glow;
   glowEl.classList.toggle('active', is_running && !is_paused);
 
   // Stats
-  if (mode === 'pomodoro' && (is_running || completed_focus_sessions > 0)) {
+  if (!SHOW_STATS) {
+    statsEl.textContent = '';
+  } else if (mode === 'pomodoro' && (is_running || completed_focus_sessions > 0)) {
     let stat = `${completed_focus_sessions}/${goal_sessions}`;
     if (total_focus_seconds > 0) stat += ` · ${formatDuration(total_focus_seconds)}`;
     statsEl.textContent = stat;
@@ -300,6 +374,13 @@ function update(state) {
     statsEl.textContent = formatDuration(total_focus_seconds);
   } else {
     statsEl.textContent = '';
+  }
+
+  // Next up indicator
+  if (SHOW_NEXT && next_session_type && is_running && !overtime) {
+    nextUpEl.textContent = `Next: ${next_session_type}`;
+  } else {
+    nextUpEl.textContent = '';
   }
 
   // Transition message
@@ -322,12 +403,10 @@ async function poll() {
       update(null);
     }
   } catch (e) {
-    // File might not exist yet — show idle
     update(lastState);
   }
 }
 
-// Start polling
 poll();
 setInterval(poll, POLL_INTERVAL);
 </script>

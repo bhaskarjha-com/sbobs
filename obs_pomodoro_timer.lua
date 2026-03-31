@@ -1,8 +1,8 @@
 --[[
-    OBS Session Timer v3.1.0
-    Session timer and environment controller for OBS Studio.
-    Multiple timer modes, scene switching, chapter markers, mic control,
-    source visibility, break suggestions, browser overlay, and persistence.
+    OBS Session Timer v4.0.0
+    Multi-mode session orchestrator for OBS Studio.
+    Timer modes, scene/source/filter/volume automation, session logging,
+    chapter markers, browser overlays, and persistence.
 
     https://github.com/bhaskarjha-com/sbobs
     License: MIT
@@ -15,7 +15,7 @@ if not obs then
     return
 end
 
-local VERSION = "3.1.0"
+local VERSION = "4.0.0"
 
 ------------------------------------------------------------------------
 -- State
@@ -35,11 +35,21 @@ local pending_scene_switch = nil
 local suggestion_index = 0
 local custom_segments = {}
 local custom_segment_index = 1
+local overtime_seconds = 0
+local is_overtime = false
+local stream_start_time = 0
+
+-- Volume fade state
+local fade_active = false
+local fade_source_name = ""
+local fade_from = 1.0
+local fade_to = 1.0
+local fade_elapsed = 0
+local fade_duration = 3
 
 ------------------------------------------------------------------------
 -- Configuration (loaded from settings via script_update)
 ------------------------------------------------------------------------
--- Timer mode: "pomodoro", "stopwatch", "countdown", "custom"
 local timer_mode = "pomodoro"
 
 local focus_duration = 1500
@@ -57,6 +67,15 @@ local countdown_duration = 1500
 
 -- Custom intervals mode
 local custom_intervals_text = ""
+
+-- Session offset
+local starting_session_offset = 0
+
+-- Negative timer / overtime
+local enable_overtime = false
+
+-- Session history logging
+local enable_session_log = false
 
 -- Stream integration toggles
 local enable_scene_switching = false
@@ -76,6 +95,17 @@ local mute_mic_during_focus = true
 
 -- Source visibility
 local hide_during_focus_source = ""
+
+-- Volume ducking
+local volume_source_name = ""
+local focus_volume = 0.3
+local break_volume = 0.8
+local enable_volume_fade = true
+
+-- Filter toggle
+local filter_source_name = ""
+local focus_filters_enable = ""
+local focus_filters_disable = ""
 
 -- Break suggestions
 local break_suggestions_text = "Stretch!,Hydrate!,Look away from screen,Take a walk,Deep breaths,Roll your shoulders,Stand up,Rest your eyes"
@@ -145,6 +175,10 @@ local function format_time(seconds)
     return string.format("%02d:%02d", math.floor(seconds / 60), seconds % 60)
 end
 
+local function format_overtime(seconds)
+    return "+" .. format_time(seconds)
+end
+
 local function format_duration_human(seconds)
     if seconds < 60 then return seconds .. "s" end
     local mins = math.floor(seconds / 60)
@@ -159,7 +193,10 @@ local function get_state_file_path()
     return obs.script_path() .. "pomodoro_state.json"
 end
 
--- Parse comma-separated break suggestions
+local function get_log_file_path()
+    return obs.script_path() .. "session_history.csv"
+end
+
 local function parse_suggestions(text)
     local result = {}
     if not text or text == "" then return result end
@@ -172,7 +209,6 @@ local function parse_suggestions(text)
     return result
 end
 
--- Parse custom intervals: "Name:Minutes,Name:Minutes,..."
 local function parse_custom_intervals(text)
     local result = {}
     if not text or text == "" then return result end
@@ -185,7 +221,6 @@ local function parse_custom_intervals(text)
     return result
 end
 
--- Get next break suggestion
 local function get_break_suggestion()
     if #parsed_suggestions == 0 then return nil end
     suggestion_index = suggestion_index + 1
@@ -196,8 +231,50 @@ local function get_break_suggestion()
 end
 
 ------------------------------------------------------------------------
+-- Session History Log
+------------------------------------------------------------------------
+local function log_session(stype, duration, completed)
+    if not enable_session_log then return end
+    local path = get_log_file_path()
+
+    -- Write header if file doesn't exist
+    local check = io.open(path, "r")
+    local needs_header = (check == nil)
+    if check then check:close() end
+
+    local file = io.open(path, "a")
+    if not file then return end
+
+    if needs_header then
+        file:write("date,time,session_type,duration_seconds,completed,mode,total_focus\n")
+    end
+
+    file:write(string.format("%s,%s,%s,%d,%s,%s,%d\n",
+        os.date("%Y-%m-%d"),
+        os.date("%H:%M:%S"),
+        stype,
+        duration,
+        tostring(completed),
+        timer_mode,
+        total_focus_seconds
+    ))
+    file:close()
+end
+
+------------------------------------------------------------------------
 -- Session Persistence
 ------------------------------------------------------------------------
+local function get_next_session_type()
+    if timer_mode ~= "pomodoro" then return "" end
+    if session_type == "Focus" then
+        if (cycle_count + 1) % long_break_interval == 0 then
+            return "Long Break"
+        end
+        return "Short Break"
+    end
+    return "Focus"
+end
+
 local function save_state()
     local path = get_state_file_path()
     local file = io.open(path, "w")
@@ -207,6 +284,21 @@ local function save_state()
     local seg_name = ""
     if timer_mode == "custom" and custom_segments[custom_segment_index] then
         seg_name = custom_segments[custom_segment_index].name
+    end
+
+    local next_type = get_next_session_type()
+    local sessions_remaining = math.max(0, goal_sessions - completed_focus_sessions)
+    local next_in = current_time
+    if is_overtime then next_in = 0 end
+
+    local stream_dur = 0
+    if stream_start_time > 0 then
+        stream_dur = os.time() - stream_start_time
+    end
+
+    local suggestion_text = ""
+    if suggestion_index > 0 and suggestion_index <= #parsed_suggestions then
+        suggestion_text = parsed_suggestions[suggestion_index]
     end
 
     local json = string.format(
@@ -227,6 +319,13 @@ local function save_state()
         '  "custom_segment_name": "%s",\n' ..
         '  "custom_segment_index": %d,\n' ..
         '  "custom_segment_count": %d,\n' ..
+        '  "is_overtime": %s,\n' ..
+        '  "overtime_seconds": %d,\n' ..
+        '  "next_session_type": "%s",\n' ..
+        '  "next_session_in": %d,\n' ..
+        '  "sessions_remaining": %d,\n' ..
+        '  "break_suggestion": "%s",\n' ..
+        '  "stream_duration": %d,\n' ..
         '  "timestamp": %d\n' ..
         '}',
         VERSION,
@@ -245,6 +344,13 @@ local function save_state()
         seg_name:gsub('"', '\\"'),
         custom_segment_index,
         #custom_segments,
+        tostring(is_overtime),
+        overtime_seconds,
+        next_type,
+        next_in,
+        sessions_remaining,
+        suggestion_text:gsub('"', '\\"'),
+        stream_dur,
         os.time()
     )
 
@@ -293,7 +399,6 @@ local function load_state()
         return nil
     end
 
-    -- For pomodoro mode, validate session type
     if (not state.timer_mode or state.timer_mode == "pomodoro") and state.session_type then
         if state.session_type ~= "Focus" and
            state.session_type ~= "Short Break" and
@@ -411,7 +516,6 @@ end
 ------------------------------------------------------------------------
 local function do_scene_switch()
     if not enable_scene_switching then return end
-
     local scene_map = {
         Focus = focus_scene,
         ["Short Break"] = short_break_scene,
@@ -464,13 +568,102 @@ local function update_source_visibility()
     if not hide_during_focus_source or hide_during_focus_source == "" then return end
 
     local should_show = (session_type ~= "Focus")
-
     local source = obs.obs_get_source_by_name(hide_during_focus_source)
     if source then
         obs.obs_source_set_enabled(source, should_show)
         obs.obs_source_release(source)
         log("Source '" .. hide_during_focus_source .. "' " .. (should_show and "shown" or "hidden"))
     end
+end
+
+------------------------------------------------------------------------
+-- Volume Ducking
+------------------------------------------------------------------------
+local function set_source_volume(source_name, volume)
+    if not source_name or source_name == "" then return end
+    local source = obs.obs_get_source_by_name(source_name)
+    if source then
+        obs.obs_source_set_volume(source, math.max(0, math.min(1.0, volume)))
+        obs.obs_source_release(source)
+    end
+end
+
+local function start_volume_fade(target_vol)
+    if not volume_source_name or volume_source_name == "" then return end
+    if not enable_volume_fade then
+        set_source_volume(volume_source_name, target_vol)
+        return
+    end
+
+    local source = obs.obs_get_source_by_name(volume_source_name)
+    if source then
+        fade_from = obs.obs_source_get_volume(source)
+        obs.obs_source_release(source)
+    else
+        fade_from = 1.0
+    end
+
+    fade_to = target_vol
+    fade_source_name = volume_source_name
+    fade_elapsed = 0
+    fade_duration = 3
+    fade_active = true
+end
+
+local function process_volume_fade()
+    if not fade_active then return end
+    fade_elapsed = fade_elapsed + 1
+    local t = math.min(fade_elapsed / fade_duration, 1.0)
+    -- Ease-in-out
+    local eased = t < 0.5 and (2 * t * t) or (1 - (-2 * t + 2) ^ 2 / 2)
+    local vol = fade_from + (fade_to - fade_from) * eased
+    set_source_volume(fade_source_name, vol)
+    if t >= 1.0 then
+        fade_active = false
+        log(string.format("Volume fade complete: %.0f%%", fade_to * 100))
+    end
+end
+
+local function update_volume()
+    if not volume_source_name or volume_source_name == "" then return end
+    local target = (session_type == "Focus") and focus_volume or break_volume
+    start_volume_fade(target)
+    log(string.format("Volume → %.0f%% for %s", target * 100, session_type))
+end
+
+------------------------------------------------------------------------
+-- Filter Toggle
+------------------------------------------------------------------------
+local function update_filters()
+    if not filter_source_name or filter_source_name == "" then return end
+
+    local source = obs.obs_get_source_by_name(filter_source_name)
+    if not source then return end
+
+    local in_focus = (session_type == "Focus")
+
+    -- Enable filters during focus
+    if focus_filters_enable and focus_filters_enable ~= "" then
+        for fname in focus_filters_enable:gmatch("([^,]+)") do
+            local name = fname:match("^%s*(.-)%s*$")
+            if name and name ~= "" then
+                obs.obs_source_filter_set_enabled(source, name, in_focus)
+            end
+        end
+    end
+
+    -- Disable filters during focus (enable during break)
+    if focus_filters_disable and focus_filters_disable ~= "" then
+        for fname in focus_filters_disable:gmatch("([^,]+)") do
+            local name = fname:match("^%s*(.-)%s*$")
+            if name and name ~= "" then
+                obs.obs_source_filter_set_enabled(source, name, not in_focus)
+            end
+        end
+    end
+
+    obs.obs_source_release(source)
+    log("Filters updated for " .. session_type)
 end
 
 ------------------------------------------------------------------------
@@ -537,7 +730,6 @@ local function update_display_texts()
     -- Session message
     local message = show_transition and transition_message or get_session_message()
 
-    -- Append break suggestion during breaks in pomodoro mode
     if timer_mode == "pomodoro" and session_type ~= "Focus" and
        not show_transition and #parsed_suggestions > 0 then
         local suggestion = parsed_suggestions[suggestion_index]
@@ -546,17 +738,30 @@ local function update_display_texts()
         end
     end
 
+    if is_overtime then
+        message = message .. " [OVERTIME]"
+    end
+
     if is_paused then message = message .. " (" .. paused_message .. ")" end
     update_obs_source_text(message_source, message)
 
-    -- Time
-    update_obs_source_text(time_source, format_time(current_time))
+    -- Time display
+    if is_overtime then
+        update_obs_source_text(time_source, format_overtime(overtime_seconds))
+    else
+        update_obs_source_text(time_source, format_time(current_time))
+    end
 
     -- Progress bar
     if show_progress_bar and timer_mode ~= "stopwatch" then
         local total = get_duration_for_session(session_type)
-        local elapsed = total - current_time
-        update_obs_source_text(progress_bar_source, create_progress_bar(elapsed, total))
+        if is_overtime then
+            update_obs_source_text(progress_bar_source,
+                string.rep("█", progress_bar_length))
+        else
+            local elapsed = total - current_time
+            update_obs_source_text(progress_bar_source, create_progress_bar(elapsed, total))
+        end
     else
         update_obs_source_text(progress_bar_source, "")
     end
@@ -580,24 +785,30 @@ local function show_transition_msg(message)
 end
 
 local function update_session(new_type, duration, message)
+    -- Log the completed session
+    local completed_duration = get_duration_for_session(session_type)
+    log_session(session_type, completed_duration, true)
+
     session_type = new_type
     current_time = duration
+    is_overtime = false
+    overtime_seconds = 0
     show_transition_msg(message)
     update_background_media()
     play_alert_sound()
     schedule_scene_switch()
     update_mic_state()
     update_source_visibility()
+    update_volume()
+    update_filters()
     add_chapter_marker()
 end
 
 local function switch_session()
     if timer_mode == "pomodoro" then
-        -- Standard Pomodoro cycling
         if session_type == "Focus" then
             completed_focus_sessions = completed_focus_sessions + 1
             cycle_count = cycle_count + 1
-            -- Get a break suggestion for the upcoming break
             get_break_suggestion()
             if cycle_count % long_break_interval == 0 then
                 update_session("Long Break", long_break_duration, transition_to_long_break_message)
@@ -609,7 +820,7 @@ local function switch_session()
         end
 
     elseif timer_mode == "countdown" then
-        -- Countdown finished
+        log_session("Countdown", countdown_duration, true)
         show_transition_msg("Countdown complete!")
         play_alert_sound()
         is_running = false
@@ -619,7 +830,11 @@ local function switch_session()
         return
 
     elseif timer_mode == "custom" then
-        -- Advance to next segment
+        local completed_seg = custom_segments[custom_segment_index]
+        if completed_seg then
+            log_session(completed_seg.name, completed_seg.duration, true)
+        end
+
         custom_segment_index = custom_segment_index + 1
         if custom_segment_index > #custom_segments then
             if auto_start_next then
@@ -640,6 +855,8 @@ local function switch_session()
         if seg then
             session_type = seg.name
             current_time = seg.duration
+            is_overtime = false
+            overtime_seconds = 0
             show_transition_msg("Next: " .. seg.name)
             play_alert_sound()
             add_chapter_marker()
@@ -661,6 +878,7 @@ end
 ------------------------------------------------------------------------
 local function timer_tick()
     process_pending_scene_switch()
+    process_volume_fade()
 
     if not is_running or is_paused then return end
 
@@ -671,11 +889,9 @@ local function timer_tick()
         end
     else
         if timer_mode == "stopwatch" then
-            -- Count UP
             current_time = current_time + 1
             total_focus_seconds = total_focus_seconds + 1
         else
-            -- Count DOWN (pomodoro, countdown, custom)
             if current_time > 0 then
                 current_time = current_time - 1
                 if timer_mode == "pomodoro" and session_type == "Focus" then
@@ -684,7 +900,18 @@ local function timer_tick()
                     total_focus_seconds = total_focus_seconds + 1
                 end
             else
-                switch_session()
+                -- Timer hit zero
+                if enable_overtime and not is_overtime then
+                    -- Enter overtime mode instead of switching
+                    is_overtime = true
+                    overtime_seconds = 0
+                    play_alert_sound()
+                    log("Overtime started for " .. session_type)
+                elseif is_overtime then
+                    overtime_seconds = overtime_seconds + 1
+                else
+                    switch_session()
+                end
             end
         end
     end
@@ -703,8 +930,9 @@ local function start_timer()
     else
         is_running = true
         is_paused = false
+        is_overtime = false
+        overtime_seconds = 0
 
-        -- Initialize based on mode
         if timer_mode == "stopwatch" then
             current_time = 0
             session_type = "Stopwatch"
@@ -725,18 +953,31 @@ local function start_timer()
             current_time = seg.duration
             log("Custom intervals started — " .. seg.name .. " (" .. format_time(seg.duration) .. ")")
         else
-            -- Pomodoro: keep current state or init to focus
+            -- Pomodoro
             if current_time <= 0 then
                 current_time = focus_duration
                 session_type = "Focus"
             end
+            -- Apply session offset on first start
+            if starting_session_offset > 0 and completed_focus_sessions == 0 then
+                completed_focus_sessions = starting_session_offset
+                cycle_count = starting_session_offset
+                log("Session offset applied: starting at session " .. (starting_session_offset + 1))
+            end
             log("Timer started — " .. session_type .. " (" .. format_time(current_time) .. ")")
+        end
+
+        -- Track stream start time
+        if stream_start_time == 0 then
+            stream_start_time = os.time()
         end
     end
     update_display_texts()
     update_background_media()
     update_mic_state()
     update_source_visibility()
+    update_volume()
+    update_filters()
     save_state()
 end
 
@@ -752,6 +993,12 @@ local function toggle_pause()
 end
 
 local function stop_timer()
+    -- Log incomplete session
+    if is_running then
+        local dur = get_duration_for_session(session_type) - current_time
+        log_session(session_type, dur, false)
+    end
+
     is_running = false
     is_paused = false
     session_type = "Focus"
@@ -759,6 +1006,8 @@ local function stop_timer()
     cycle_count = 0
     show_transition = false
     custom_segment_index = 1
+    is_overtime = false
+    overtime_seconds = 0
     log("Timer stopped")
     update_display_texts()
     delete_state_file()
@@ -769,6 +1018,7 @@ local function reset_timer()
     completed_focus_sessions = 0
     total_focus_seconds = 0
     suggestion_index = 0
+    stream_start_time = 0
     log("Timer reset — all progress cleared")
     update_display_texts()
     delete_state_file()
@@ -783,6 +1033,12 @@ local function skip_session()
     if timer_mode == "stopwatch" then
         log("Stopwatch — nothing to skip")
         return
+    end
+
+    -- Skip overtime if active
+    if is_overtime then
+        is_overtime = false
+        overtime_seconds = 0
     end
 
     log("Skipping " .. session_type)
@@ -826,6 +1082,7 @@ end
 local function on_frontend_event(event)
     if event == obs.OBS_FRONTEND_EVENT_STREAMING_STARTED then
         log("Stream started")
+        stream_start_time = os.time()
         if auto_start_on_stream and not is_running then
             start_timer()
         end
@@ -879,7 +1136,7 @@ end
 ------------------------------------------------------------------------
 function script_description()
     return "Session Timer v" .. VERSION ..
-        " — Multi-mode timer with scene switching, chapter markers, overlays, and more."
+        " — Multi-mode session orchestrator with full OBS environment control."
 end
 
 function script_properties()
@@ -911,6 +1168,7 @@ function script_properties()
     obs.obs_properties_add_int(props, "long_break_duration", "Long Break (min)", 1, 60, 1)
     obs.obs_properties_add_int(props, "long_break_interval", "Long Break Every (cycles)", 1, 10, 1)
     obs.obs_properties_add_int(props, "goal_sessions", "Goal Sessions", 1, 20, 1)
+    obs.obs_properties_add_int(props, "starting_session_offset", "Starting Session Offset", 0, 20, 1)
 
     -- ── Countdown Duration ──
     obs.obs_properties_add_int(props, "countdown_duration", "Countdown Duration (min)", 1, 480, 1)
@@ -922,11 +1180,15 @@ function script_properties()
     -- ── Behavior ──
     obs.obs_properties_add_bool(props, "auto_start_next", "Auto-start Next Session / Loop")
     obs.obs_properties_add_bool(props, "show_progress_bar", "Show Progress Bar")
+    obs.obs_properties_add_bool(props, "enable_overtime", "Enable Overtime (negative timer)")
     obs.obs_properties_add_int(props, "transition_display_time", "Transition Message Duration (sec)", 1, 10, 1)
 
     -- ── Break Suggestions ──
     obs.obs_properties_add_text(props, "break_suggestions_text",
         "Break Suggestions (comma-separated)", obs.OBS_TEXT_DEFAULT)
+
+    -- ── Session Logging ──
+    obs.obs_properties_add_bool(props, "enable_session_log", "Log Sessions to CSV File")
 
     -- ── Stream Integration ──
     obs.obs_properties_add_bool(props, "auto_start_on_stream", "Auto-start Timer on Stream Start")
@@ -935,17 +1197,14 @@ function script_properties()
 
     -- ── Scene Switching ──
     obs.obs_properties_add_bool(props, "enable_scene_switching", "Enable Scene Switching")
-
     local p
 
     p = obs.obs_properties_add_list(props, "focus_scene",
         "Focus Scene", obs.OBS_COMBO_TYPE_LIST, obs.OBS_COMBO_FORMAT_STRING)
     populate_scene_list(p)
-
     p = obs.obs_properties_add_list(props, "short_break_scene",
         "Short Break Scene", obs.OBS_COMBO_TYPE_LIST, obs.OBS_COMBO_FORMAT_STRING)
     populate_scene_list(p)
-
     p = obs.obs_properties_add_list(props, "long_break_scene",
         "Long Break Scene", obs.OBS_COMBO_TYPE_LIST, obs.OBS_COMBO_FORMAT_STRING)
     populate_scene_list(p)
@@ -953,7 +1212,6 @@ function script_properties()
     -- ── Mic Control ──
     obs.obs_properties_add_bool(props, "enable_mic_control", "Enable Mic Control")
     obs.obs_properties_add_bool(props, "mute_mic_during_focus", "Mute Mic During Focus")
-
     p = obs.obs_properties_add_list(props, "mic_source_name",
         "Mic Source", obs.OBS_COMBO_TYPE_LIST, obs.OBS_COMBO_FORMAT_STRING)
     populate_source_list(p)
@@ -963,27 +1221,39 @@ function script_properties()
         "Hide During Focus (e.g. webcam)", obs.OBS_COMBO_TYPE_LIST, obs.OBS_COMBO_FORMAT_STRING)
     populate_source_list(p)
 
+    -- ── Volume Ducking ──
+    p = obs.obs_properties_add_list(props, "volume_source_name",
+        "Volume Ducking Source (e.g. music)", obs.OBS_COMBO_TYPE_LIST, obs.OBS_COMBO_FORMAT_STRING)
+    populate_source_list(p)
+    obs.obs_properties_add_int_slider(props, "focus_volume", "Focus Volume %", 0, 100, 5)
+    obs.obs_properties_add_int_slider(props, "break_volume", "Break Volume %", 0, 100, 5)
+    obs.obs_properties_add_bool(props, "enable_volume_fade", "Smooth Volume Fade (3s)")
+
+    -- ── Filter Toggle ──
+    p = obs.obs_properties_add_list(props, "filter_source_name",
+        "Filter Toggle Source (e.g. Camera)", obs.OBS_COMBO_TYPE_LIST, obs.OBS_COMBO_FORMAT_STRING)
+    populate_source_list(p)
+    obs.obs_properties_add_text(props, "focus_filters_enable",
+        "Enable During Focus (filter names, comma-sep)", obs.OBS_TEXT_DEFAULT)
+    obs.obs_properties_add_text(props, "focus_filters_disable",
+        "Disable During Focus (filter names, comma-sep)", obs.OBS_TEXT_DEFAULT)
+
     -- ── Text Sources ──
     p = obs.obs_properties_add_list(props, "time_source",
         "Timer Text Source", obs.OBS_COMBO_TYPE_LIST, obs.OBS_COMBO_FORMAT_STRING)
     populate_source_list(p)
-
     p = obs.obs_properties_add_list(props, "message_source",
         "Session Message Source", obs.OBS_COMBO_TYPE_LIST, obs.OBS_COMBO_FORMAT_STRING)
     populate_source_list(p)
-
     p = obs.obs_properties_add_list(props, "focus_count_source",
         "Focus Count Source", obs.OBS_COMBO_TYPE_LIST, obs.OBS_COMBO_FORMAT_STRING)
     populate_source_list(p)
-
     p = obs.obs_properties_add_list(props, "progress_bar_source",
         "Progress Bar Source", obs.OBS_COMBO_TYPE_LIST, obs.OBS_COMBO_FORMAT_STRING)
     populate_source_list(p)
-
     p = obs.obs_properties_add_list(props, "background_media_source",
         "Background Media Source", obs.OBS_COMBO_TYPE_LIST, obs.OBS_COMBO_FORMAT_STRING)
     populate_source_list(p)
-
     p = obs.obs_properties_add_list(props, "alert_source_name",
         "Alert Sound Source (Media)", obs.OBS_COMBO_TYPE_LIST, obs.OBS_COMBO_FORMAT_STRING)
     populate_source_list(p)
@@ -1031,12 +1301,16 @@ function script_defaults(settings)
     obs.obs_data_set_default_int(settings, "long_break_duration", 15)
     obs.obs_data_set_default_int(settings, "long_break_interval", 4)
     obs.obs_data_set_default_int(settings, "goal_sessions", 6)
+    obs.obs_data_set_default_int(settings, "starting_session_offset", 0)
     obs.obs_data_set_default_int(settings, "countdown_duration", 25)
     obs.obs_data_set_default_int(settings, "transition_display_time", 2)
     obs.obs_data_set_default_bool(settings, "show_progress_bar", true)
     obs.obs_data_set_default_bool(settings, "auto_start_next", true)
     obs.obs_data_set_default_bool(settings, "enable_chapter_markers", true)
     obs.obs_data_set_default_bool(settings, "mute_mic_during_focus", true)
+    obs.obs_data_set_default_bool(settings, "enable_volume_fade", true)
+    obs.obs_data_set_default_int(settings, "focus_volume", 30)
+    obs.obs_data_set_default_int(settings, "break_volume", 80)
     obs.obs_data_set_default_string(settings, "custom_intervals_text", "Work:25,Break:5,Work:25,Break:5")
     obs.obs_data_set_default_string(settings, "break_suggestions_text",
         "Stretch!,Hydrate!,Look away from screen,Take a walk,Deep breaths,Roll your shoulders,Stand up,Rest your eyes")
@@ -1050,48 +1324,52 @@ function script_defaults(settings)
 end
 
 function script_update(settings)
-    -- Timer mode
     timer_mode = obs.obs_data_get_string(settings, "timer_mode")
 
-    -- Durations
     focus_duration = obs.obs_data_get_int(settings, "focus_duration") * 60
     short_break_duration = obs.obs_data_get_int(settings, "short_break_duration") * 60
     long_break_duration = obs.obs_data_get_int(settings, "long_break_duration") * 60
     long_break_interval = obs.obs_data_get_int(settings, "long_break_interval")
     goal_sessions = obs.obs_data_get_int(settings, "goal_sessions")
+    starting_session_offset = obs.obs_data_get_int(settings, "starting_session_offset")
     countdown_duration = obs.obs_data_get_int(settings, "countdown_duration") * 60
     transition_display_time = obs.obs_data_get_int(settings, "transition_display_time")
     show_progress_bar = obs.obs_data_get_bool(settings, "show_progress_bar")
     auto_start_next = obs.obs_data_get_bool(settings, "auto_start_next")
+    enable_overtime = obs.obs_data_get_bool(settings, "enable_overtime")
 
-    -- Custom intervals
     custom_intervals_text = obs.obs_data_get_string(settings, "custom_intervals_text")
     custom_segments = parse_custom_intervals(custom_intervals_text)
 
-    -- Break suggestions
     break_suggestions_text = obs.obs_data_get_string(settings, "break_suggestions_text")
     parsed_suggestions = parse_suggestions(break_suggestions_text)
 
-    -- Stream integration
+    enable_session_log = obs.obs_data_get_bool(settings, "enable_session_log")
+
     auto_start_on_stream = obs.obs_data_get_bool(settings, "auto_start_on_stream")
     auto_stop_on_stream_end = obs.obs_data_get_bool(settings, "auto_stop_on_stream_end")
     enable_chapter_markers = obs.obs_data_get_bool(settings, "enable_chapter_markers")
 
-    -- Scene switching
     enable_scene_switching = obs.obs_data_get_bool(settings, "enable_scene_switching")
     focus_scene = obs.obs_data_get_string(settings, "focus_scene")
     short_break_scene = obs.obs_data_get_string(settings, "short_break_scene")
     long_break_scene = obs.obs_data_get_string(settings, "long_break_scene")
 
-    -- Mic control
     enable_mic_control = obs.obs_data_get_bool(settings, "enable_mic_control")
     mute_mic_during_focus = obs.obs_data_get_bool(settings, "mute_mic_during_focus")
     mic_source_name = obs.obs_data_get_string(settings, "mic_source_name")
 
-    -- Source visibility
     hide_during_focus_source = obs.obs_data_get_string(settings, "hide_during_focus_source")
 
-    -- Sources
+    volume_source_name = obs.obs_data_get_string(settings, "volume_source_name")
+    focus_volume = obs.obs_data_get_int(settings, "focus_volume") / 100.0
+    break_volume = obs.obs_data_get_int(settings, "break_volume") / 100.0
+    enable_volume_fade = obs.obs_data_get_bool(settings, "enable_volume_fade")
+
+    filter_source_name = obs.obs_data_get_string(settings, "filter_source_name")
+    focus_filters_enable = obs.obs_data_get_string(settings, "focus_filters_enable")
+    focus_filters_disable = obs.obs_data_get_string(settings, "focus_filters_disable")
+
     focus_count_source = obs.obs_data_get_string(settings, "focus_count_source")
     message_source = obs.obs_data_get_string(settings, "message_source")
     time_source = obs.obs_data_get_string(settings, "time_source")
@@ -1099,7 +1377,6 @@ function script_update(settings)
     background_media_source = obs.obs_data_get_string(settings, "background_media_source")
     alert_source_name = obs.obs_data_get_string(settings, "alert_source_name")
 
-    -- Messages
     focus_message = obs.obs_data_get_string(settings, "focus_message")
     short_break_message = obs.obs_data_get_string(settings, "short_break_message")
     long_break_message = obs.obs_data_get_string(settings, "long_break_message")
@@ -1107,17 +1384,14 @@ function script_update(settings)
     transition_to_short_break_message = obs.obs_data_get_string(settings, "transition_to_short_break_message")
     transition_to_long_break_message = obs.obs_data_get_string(settings, "transition_to_long_break_message")
 
-    -- Audio paths
     focus_alert_sound_path = obs.obs_data_get_string(settings, "focus_alert_sound_path")
     short_break_alert_sound_path = obs.obs_data_get_string(settings, "short_break_alert_sound_path")
     long_break_alert_sound_path = obs.obs_data_get_string(settings, "long_break_alert_sound_path")
 
-    -- Background media
     focus_background_media = obs.obs_data_get_string(settings, "focus_background_media")
     short_break_background_media = obs.obs_data_get_string(settings, "short_break_background_media")
     long_break_background_media = obs.obs_data_get_string(settings, "long_break_background_media")
 
-    -- Sync display when timer is idle
     if not is_running then
         if timer_mode == "pomodoro" then
             current_time = focus_duration

@@ -19,6 +19,9 @@
     --focus-color: #22c55e;
     --short-break-color: #3b82f6;
     --long-break-color: #a855f7;
+    --stopwatch-color: #f59e0b;
+    --countdown-color: #f97316;
+    --overtime-color: #ef4444;
     --idle-color: #475569;
     --danger: #ef4444;
   }
@@ -34,7 +37,6 @@
     user-select: none;
   }
 
-  /* ── Header ── */
   .header {
     display: flex;
     align-items: center;
@@ -52,6 +54,22 @@
     color: var(--text-muted);
   }
 
+  .header-badges {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .mode-badge {
+    font-size: 0.5rem;
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: var(--surface);
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
   .status-dot {
     width: 6px;
     height: 6px;
@@ -59,16 +77,15 @@
     background: var(--idle-color);
     transition: background 0.3s;
   }
-
   .status-dot.running { background: var(--focus-color); }
   .status-dot.paused { background: #eab308; animation: blink 1.5s infinite; }
+  .status-dot.overtime { background: var(--overtime-color); animation: blink 0.8s infinite; }
 
   @keyframes blink {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.3; }
   }
 
-  /* ── Timer Display ── */
   .timer-section {
     text-align: center;
     padding: 16px 0;
@@ -85,35 +102,14 @@
     margin-bottom: 8px;
     transition: background 0.3s, color 0.3s;
   }
-
-  .session-badge.focus {
-    background: rgba(34, 197, 94, 0.15);
-    color: var(--focus-color);
-  }
-  .session-badge.short-break {
-    background: rgba(59, 130, 246, 0.15);
-    color: var(--short-break-color);
-  }
-  .session-badge.long-break {
-    background: rgba(168, 85, 247, 0.15);
-    color: var(--long-break-color);
-  }
-  .session-badge.idle {
-    background: rgba(71, 85, 105, 0.2);
-    color: var(--text-muted);
-  }
-  .session-badge.stopwatch {
-    background: rgba(245, 158, 11, 0.15);
-    color: #f59e0b;
-  }
-  .session-badge.countdown {
-    background: rgba(249, 115, 22, 0.15);
-    color: #f97316;
-  }
-  .session-badge.custom {
-    background: rgba(34, 197, 94, 0.15);
-    color: var(--focus-color);
-  }
+  .session-badge.focus { background: rgba(34, 197, 94, 0.15); color: var(--focus-color); }
+  .session-badge.short-break { background: rgba(59, 130, 246, 0.15); color: var(--short-break-color); }
+  .session-badge.long-break { background: rgba(168, 85, 247, 0.15); color: var(--long-break-color); }
+  .session-badge.idle { background: rgba(71, 85, 105, 0.2); color: var(--text-muted); }
+  .session-badge.stopwatch { background: rgba(245, 158, 11, 0.15); color: var(--stopwatch-color); }
+  .session-badge.countdown { background: rgba(249, 115, 22, 0.15); color: var(--countdown-color); }
+  .session-badge.custom { background: rgba(34, 197, 94, 0.15); color: var(--focus-color); }
+  .session-badge.overtime { background: rgba(239, 68, 68, 0.15); color: var(--overtime-color); }
 
   .time-display {
     font-size: 2.4rem;
@@ -123,10 +119,15 @@
     line-height: 1.1;
     transition: color 0.3s;
   }
-
   .time-display.idle { color: var(--text-muted); }
+  .time-display.overtime { color: var(--overtime-color); }
 
-  /* ── Progress Bar ── */
+  .next-up {
+    font-size: 0.6rem;
+    color: var(--text-muted);
+    margin-top: 4px;
+  }
+
   .progress-track {
     height: 4px;
     background: var(--surface);
@@ -141,16 +142,15 @@
     width: 0%;
     transition: width 0.8s ease, background 0.3s;
   }
-
   .progress-fill.focus { background: var(--focus-color); }
   .progress-fill.short-break { background: var(--short-break-color); }
   .progress-fill.long-break { background: var(--long-break-color); }
-  .progress-fill.stopwatch { background: #f59e0b; }
-  .progress-fill.countdown { background: #f97316; }
+  .progress-fill.stopwatch { background: var(--stopwatch-color); }
+  .progress-fill.countdown { background: var(--countdown-color); }
   .progress-fill.custom { background: var(--focus-color); }
+  .progress-fill.overtime { background: var(--overtime-color); }
   .progress-fill.idle { background: var(--idle-color); }
 
-  /* ── Transition Message ── */
   .transition-msg {
     text-align: center;
     font-size: 0.72rem;
@@ -161,10 +161,18 @@
     opacity: 0;
     transition: opacity 0.3s;
   }
-
   .transition-msg.visible { opacity: 1; }
 
-  /* ── Stats Grid ── */
+  .break-suggestion {
+    text-align: center;
+    font-size: 0.65rem;
+    font-weight: 500;
+    color: var(--text-muted);
+    font-style: italic;
+    min-height: 16px;
+    margin-bottom: 4px;
+  }
+
   .stats-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -197,12 +205,8 @@
     margin-top: 2px;
   }
 
-  /* ── Full width stat ── */
-  .stat-card.full {
-    grid-column: 1 / -1;
-  }
+  .stat-card.full { grid-column: 1 / -1; }
 
-  /* ── Footer ── */
   .footer {
     margin-top: 10px;
     padding-top: 8px;
@@ -211,34 +215,29 @@
     font-size: 0.55rem;
     color: var(--text-muted);
   }
-
-  .footer kbd {
-    background: var(--surface);
-    padding: 1px 5px;
-    border-radius: 3px;
-    font-family: inherit;
-    font-size: 0.52rem;
-    border: 1px solid var(--border);
-    color: var(--text-secondary);
-  }
 </style>
 </head>
 <body>
 
 <div class="header">
   <span class="header-title">Session Timer</span>
-  <div class="status-dot" id="statusDot"></div>
+  <div class="header-badges">
+    <span class="mode-badge" id="modeBadge">pomodoro</span>
+    <div class="status-dot" id="statusDot"></div>
+  </div>
 </div>
 
 <div class="timer-section">
   <div class="session-badge idle" id="badge">Ready</div>
   <div class="time-display idle" id="time">--:--</div>
+  <div class="next-up" id="nextUp"></div>
 </div>
 
 <div class="progress-track">
   <div class="progress-fill idle" id="progressFill"></div>
 </div>
 
+<div class="break-suggestion" id="suggestion"></div>
 <div class="transition-msg" id="transition"></div>
 
 <div class="stats-grid">
@@ -258,6 +257,10 @@
     <div class="stat-value" id="elapsed">0%</div>
     <div class="stat-label">Progress</div>
   </div>
+  <div class="stat-card full">
+    <div class="stat-value" id="streamTime">--</div>
+    <div class="stat-label">Stream Duration</div>
+  </div>
 </div>
 
 <div class="footer">
@@ -270,12 +273,16 @@ const POLL_INTERVAL = 500;
 const timeEl = document.getElementById('time');
 const badgeEl = document.getElementById('badge');
 const statusDot = document.getElementById('statusDot');
+const modeBadge = document.getElementById('modeBadge');
 const progressFill = document.getElementById('progressFill');
 const transEl = document.getElementById('transition');
+const suggestionEl = document.getElementById('suggestion');
+const nextUpEl = document.getElementById('nextUp');
 const sessionsEl = document.getElementById('sessions');
 const focusTimeEl = document.getElementById('focusTime');
 const cycleEl = document.getElementById('cycle');
 const elapsedEl = document.getElementById('elapsed');
+const streamTimeEl = document.getElementById('streamTime');
 
 const BADGE_CLASSES = {
   'Focus': 'focus',
@@ -311,22 +318,34 @@ function update(state) {
     progressFill.style.width = '0%';
     progressFill.className = 'progress-fill idle';
     transEl.classList.remove('visible');
+    suggestionEl.textContent = '';
+    nextUpEl.textContent = '';
     sessionsEl.textContent = '0/0';
     focusTimeEl.textContent = '0m';
     cycleEl.textContent = '0';
     elapsedEl.textContent = '0%';
+    streamTimeEl.textContent = '--';
+    modeBadge.textContent = '--';
     return;
   }
 
   const { is_running, is_paused, session_type, current_time, total_time,
           completed_focus_sessions, goal_sessions, total_focus_seconds,
           cycle_count, show_transition, transition_message, timer_mode,
-          custom_segment_name, custom_segment_index, custom_segment_count } = state;
+          custom_segment_name, custom_segment_index, custom_segment_count,
+          is_overtime, overtime_seconds, next_session_type, next_session_in,
+          sessions_remaining, break_suggestion, stream_duration } = state;
 
   const mode = timer_mode || 'pomodoro';
+  const overtime = is_overtime || false;
+
+  // Mode badge
+  modeBadge.textContent = mode;
 
   // Status dot
-  if (is_running && !is_paused) {
+  if (overtime) {
+    statusDot.className = 'status-dot overtime';
+  } else if (is_running && !is_paused) {
     statusDot.className = 'status-dot running';
   } else if (is_running && is_paused) {
     statusDot.className = 'status-dot paused';
@@ -335,14 +354,22 @@ function update(state) {
   }
 
   // Time
-  timeEl.textContent = formatTime(current_time);
-  timeEl.className = is_running ? 'time-display' : 'time-display idle';
+  if (overtime) {
+    timeEl.textContent = '+' + formatTime(overtime_seconds || 0);
+    timeEl.className = 'time-display overtime';
+  } else {
+    timeEl.textContent = formatTime(current_time);
+    timeEl.className = is_running ? 'time-display' : 'time-display idle';
+  }
 
   // Badge
   let badgeText = session_type || 'Ready';
   let badgeCls = BADGE_CLASSES[session_type] || 'idle';
 
-  if (mode === 'stopwatch') {
+  if (overtime) {
+    badgeText = (session_type || 'Session') + ' · Overtime';
+    badgeCls = 'overtime';
+  } else if (mode === 'stopwatch') {
     badgeText = 'Stopwatch';
     badgeCls = 'stopwatch';
   } else if (mode === 'countdown') {
@@ -353,15 +380,17 @@ function update(state) {
     badgeCls = 'custom';
   }
 
-  if (is_paused) badgeText += ' · Paused';
+  if (is_paused && !overtime) badgeText += ' · Paused';
   if (!is_running) { badgeText = 'Ready'; badgeCls = 'idle'; }
   badgeEl.textContent = badgeText;
   badgeEl.className = 'session-badge ' + badgeCls;
 
   // Progress bar
   let progress = 0;
-  let fillCls = badgeCls;
-  if (mode === 'stopwatch') {
+  let fillCls = overtime ? 'overtime' : badgeCls;
+  if (overtime) {
+    progress = 100;
+  } else if (mode === 'stopwatch') {
     progress = ((current_time % 3600) / 3600) * 100;
   } else if (total_time > 0) {
     progress = ((total_time - current_time) / total_time) * 100;
@@ -378,7 +407,21 @@ function update(state) {
     transEl.classList.remove('visible');
   }
 
-  // Stats (mode-aware)
+  // Break suggestion
+  if (break_suggestion && is_running && session_type !== 'Focus' && !overtime) {
+    suggestionEl.textContent = '💡 ' + break_suggestion;
+  } else {
+    suggestionEl.textContent = '';
+  }
+
+  // Next up
+  if (next_session_type && is_running && !overtime) {
+    nextUpEl.textContent = `Next: ${next_session_type}`;
+  } else {
+    nextUpEl.textContent = '';
+  }
+
+  // Stats
   if (mode === 'pomodoro') {
     sessionsEl.textContent = `${completed_focus_sessions || 0}/${goal_sessions || 0}`;
     cycleEl.textContent = cycle_count || 0;
@@ -391,6 +434,13 @@ function update(state) {
   }
   focusTimeEl.textContent = formatDuration(total_focus_seconds);
   elapsedEl.textContent = Math.round(progress) + '%';
+
+  // Stream duration
+  if (stream_duration && stream_duration > 0) {
+    streamTimeEl.textContent = formatDuration(stream_duration);
+  } else {
+    streamTimeEl.textContent = '--';
+  }
 }
 
 let lastState = null;

@@ -1,10 +1,8 @@
 # OBS Session Timer
 
-A powerful session timer and environment controller for OBS Studio. Built in pure Lua — zero dependencies, zero setup friction.
+A powerful multi-mode session orchestrator for OBS Studio. Built in pure Lua — zero dependencies, zero setup friction.
 
-Originally designed for "study with me" streams, but works for any timed session format: HIIT workouts, cooking streams, meditation, podcast segments, event broadcasts, and accountability/body doubling streams.
-
-**The timer is the heartbeat. Scenes, audio, visuals, and overlays pulse to that beat.**
+The timer is the heartbeat. Scenes, audio, filters, sources, and overlays all pulse to that beat. Works for any timed session format: study streams, HIIT workouts, cooking, meditation, podcasts, events, and accountability/body doubling streams.
 
 ## Features
 
@@ -12,33 +10,46 @@ Originally designed for "study with me" streams, but works for any timed session
 - **4 timer modes** — Pomodoro, Stopwatch (count up), Countdown (single), Custom Intervals
 - **Full Pomodoro cycle** — Focus → Short Break → Long Break, auto-cycling
 - **Custom intervals** — define named segments like `Work:25,Break:5,Work:25,Break:5`
+- **Overtime / negative timer** — when countdown hits zero, counts up in red instead of auto-switching
 - **Session persistence** — save and restore timer state across OBS restarts
+- **Session offset** — resume from a specific session count (e.g., "I already did 3 off-stream")
 - **Auto-start toggle** — auto-advance between sessions or pause and wait
 - **Session tracking** — "Done: 3/6" counter with configurable goal
-- **Break suggestions** — cycle through customizable tips during breaks (Stretch!, Hydrate!, etc.)
+- **Break suggestions** — cycle through customizable tips during breaks
 - **Total focus time** — tracks cumulative focus seconds across the entire session
 - **Crash resilience** — auto-saves state every second
 
-### OBS Integration
-- **Scene switching** — auto-switch to different OBS scenes per session (Focus Scene, Break Scene, etc.)
-- **Recording chapter markers** — auto-insert chapter markers at every session transition (OBS 30.2+, MP4/MKV)
-- **Mic control** — auto-mute/unmute your mic per session type (mute during focus, unmute on break)
-- **Stream-aware** — auto-start timer when you go live, auto-stop (with summary) when stream ends
+### OBS Environment Control
+- **Scene switching** — auto-switch OBS scenes per session type
+- **Recording chapter markers** — auto-insert chapters at session transitions (OBS 30.2+)
+- **Mic control** — auto-mute/unmute per session type
+- **Source visibility** — auto-hide sources during focus (e.g. hide webcam), show on break
+- **Volume ducking** — auto-adjust music volume per session (with smooth 3-second fade)
+- **Filter toggling** — enable/disable source filters per session type
+- **Stream-aware** — auto-start timer when you go live, auto-stop when stream ends
 - **Hotkey support** — Start/Pause, Stop, and Skip from anywhere in OBS
 - **Background media** — swap background images or looping videos per session type
-- **Audio alerts** — per-session custom sounds (focus, short break, long break)
-- **Source visibility** — auto-hide sources during focus (e.g. hide webcam), show on break
-- **Source dropdowns** — pick OBS sources and scenes from lists instead of typing names
+- **Audio alerts** — per-session custom sounds
+- **Source dropdowns** — pick OBS sources and scenes from lists
 - **Progress bar** — character-based bar that fills as the session progresses
 
 ### Visual Overlay & Dock
-- **Browser Source overlay** — beautiful circular progress ring with session-colored glow, animated transitions, and transparent background for clean compositing
-- **Dockable control panel** — dark-themed stats dashboard that docks right into the OBS window, showing timer, progress bar, session stats, and cycle info
+- **Browser Source overlay** — circular progress ring with session-colored glow
+- **3 built-in themes** — Default, Neon, Minimal, Glassmorphism
+- **URL-configurable** — customize size, colors, fonts, and visibility via URL parameters
+- **Overtime display** — pulsing red ring and `+MM:SS` counter when in overtime
+- **"Next up" indicator** — shows what session comes after the current one
+- **Dockable control panel** — dark-themed dashboard with stats, mode badge, break suggestions
+- **Stream duration tracking** — shows total stream time in the dock
 - Both update in real-time by polling the script's state file
+
+### Data & Analytics
+- **Session history log** — append-only CSV file with timestamps, durations, and session types
+- **Extended state JSON** — 24 fields available for external tools (bots, Stream Deck, custom apps)
 
 ### Technical
 - **Pure Lua** — no Python, no external installs, no compilation
-- **Zero dependencies** — runs on any OBS 28+ installation out of the box
+- **Zero dependencies** — runs on any OBS 28+ installation
 - **Memory safe** — proper reference counting on all OBS API objects
 - **Cross-platform** — Windows, macOS, Linux
 
@@ -94,12 +105,19 @@ Add a beautiful circular timer overlay to your stream:
 4. Position it wherever you want on your stream layout
 5. The overlay automatically connects to the timer — no configuration needed
 
-Features:
-- Circular SVG progress ring that fills as the session progresses
-- Session-colored glow effects (green = Focus, blue = Short Break, purple = Long Break)
-- Smooth pulse animation when paused
-- Transparent background — composites cleanly over any scene
-- Shows session count and total focus time
+**URL Customization — append parameters to the file path:**
+
+| Parameter | Values | Example |
+|-----------|--------|---------|
+| `theme` | `default`, `neon`, `minimal`, `glassmorphism` | `?theme=neon` |
+| `size` | Any integer (pixels) | `?size=300` |
+| `font` | Any Google Font name | `?font=Outfit` |
+| `showStats` | `true` / `false` | `?showStats=false` |
+| `showNext` | `true` / `false` | `?showNext=false` |
+| `color_focus` | Hex color | `?color_focus=10b981` |
+| `color_short_break` | Hex color | `?color_short_break=6366f1` |
+
+Combine parameters: `timer_overlay.html?theme=neon&size=300&font=Outfit`
 
 ### Dockable Stats Panel (Optional)
 
@@ -110,134 +128,170 @@ Add a control dashboard that docks into the OBS window:
 3. Enter URL: `file:///` followed by the full path to `timer_dock.html`
    - Example: `file:///D:/dev/pro/sbobs/timer_dock.html`
 4. Click **Apply** — the dock appears as a draggable panel
-5. Drag it to dock alongside your other OBS panels
 
 Features:
 - Dark theme that matches the OBS interface
+- Timer mode badge in header
 - Large timer display with colored session badge
-- Linear progress bar
-- Transition message display
-- Stats grid: sessions completed, total focus time, current cycle, progress %
-- Status indicator dot (green = running, yellow blink = paused)
+- Break suggestion display during breaks
+- "Next up" indicator showing the upcoming session
+- Stats grid: sessions, focus time, cycle, progress, stream duration
+- Overtime display with red pulsing indicator
 
-> **Note**: The dock is read-only — control the timer via OBS hotkeys, Stream Deck, or the script panel.
+### Volume Ducking (Optional)
+
+Auto-adjust music volume based on session type:
+
+1. Select a music source from **"Volume Ducking Source"** dropdown
+2. Set **"Focus Volume %"** (default: 30%) — volume during focus sessions
+3. Set **"Break Volume %"** (default: 80%) — volume during breaks
+4. Enable **"Smooth Volume Fade"** for a 3-second ease-in-out transition
+
+### Filter Toggle (Optional)
+
+Auto-enable/disable source filters per session type:
+
+1. Select the source from **"Filter Toggle Source"** dropdown (e.g. your Camera)
+2. Enter filter names to **enable during Focus** (comma-separated)
+3. Enter filter names to **disable during Focus** (comma-separated)
+
+Example: Enable "Color Correction" during focus, disable "Background Blur" during focus (which means it gets enabled during breaks).
 
 ### Scene Switching (Optional)
 
-To have OBS automatically switch scenes on session transitions:
-
-1. Create separate scenes for each session type (e.g. "Study Scene", "Break Scene")
+1. Create separate scenes for each session type
 2. Enable **"Enable Scene Switching"** in the script settings
-3. Assign scenes from the dropdowns: Focus Scene, Short Break Scene, Long Break Scene
-
-Leave any scene dropdown set to "(None)" to skip switching for that session type.
+3. Assign scenes from the dropdowns
 
 ### Mic Control (Optional)
 
-To have the script auto-mute/unmute your mic:
-
 1. Enable **"Enable Mic Control"** in settings
-2. Select your mic from the **"Mic Source"** dropdown
-3. Check **"Mute Mic During Focus"** to mute during focus and unmute on breaks (or uncheck for the opposite)
+2. Select your mic from the dropdown
+3. Check **"Mute Mic During Focus"** to mute during focus and unmute on breaks
 
 ### Recording Chapter Markers
 
-When recording in MP4 or MKV format, the script automatically inserts chapter markers at every session transition. These show up as chapters in video players and editors, making it easy to jump to specific focus segments in VODs.
-
-**Requirements**: OBS 30.2+, recording format must support chapters (Fragmented MP4 or MKV).
-
-The script gracefully handles older OBS versions — no errors if the feature isn't available.
-
-### Background Media
-
-The script supports both **static images** and **looping videos** as backgrounds:
-
-- **Image Source** → use any `.png`, `.jpg`, `.jpeg`, `.bmp`, or `.gif` (including animated GIFs)
-- **Media Source** → use any video format OBS supports (`.mp4`, `.webm`, `.mov`, etc.). Videos automatically loop and restart on session transitions.
-
-The script auto-detects the source type and handles it accordingly.
-
-### Stream-Aware Behavior (Optional)
-
-- **Auto-start on stream**: Timer starts automatically when you click "Start Streaming"
-- **Auto-stop on stream end**: Timer stops and shows a session summary when the stream ends
-- Both are off by default — enable them in the settings if desired
+Automatically inserts chapter markers at every session transition. Shows up as chapters in video players. **Requires**: OBS 30.2+, MP4/MKV format.
 
 ### Source Visibility (Optional)
 
-Auto-hide a source (like your webcam) during focus sessions:
+Auto-hide a source during focus sessions:
 
-1. Select the source from **"Hide During Focus (e.g. webcam)"** dropdown
+1. Select the source from **"Hide During Focus"** dropdown
 2. The source is disabled during Focus and re-enabled during breaks
 
 ### Break Suggestions
 
-The script displays a rotating tip during break sessions (e.g. "Short Break · Stretch!"). Customize the list in the **"Break Suggestions"** text field — comma-separated, one per break.
+Rotating tips during break sessions (e.g. "Short Break · Stretch!"). Customize via a comma-separated list.
 
-Default suggestions: `Stretch!,Hydrate!,Look away from screen,Take a walk,Deep breaths,Roll your shoulders,Stand up,Rest your eyes`
+### Session History Log
+
+Enable **"Log Sessions to CSV File"** to track every session:
+
+```csv
+date,time,session_type,duration_seconds,completed,mode,total_focus
+2026-03-31,10:45:23,Focus,1500,true,pomodoro,1500
+2026-03-31,11:10:25,Short Break,300,true,pomodoro,1500
+```
+
+The file (`session_history.csv`) is created next to the script. Import into any spreadsheet for productivity analysis.
+
+### Overtime (Negative Timer)
+
+Enable **"Enable Overtime"** to prevent auto-switching when a session ends:
+
+- When the timer hits 0:00, it starts counting up: `+00:01`, `+00:02`, etc.
+- The overlay turns red with a pulsing ring
+- Use **Skip** to manually move to the next session
+- Great for "I need a few more minutes" situations
+
+### Stream-Aware Behavior (Optional)
+
+- **Auto-start on stream**: Timer starts when you click "Start Streaming"
+- **Auto-stop on stream end**: Timer stops with session summary
+- Both are off by default
 
 ## Session Persistence
 
-The timer automatically saves its state to `pomodoro_state.json` (next to the script). This means:
-
-- **Stream interrupted?** → Restart OBS, the timer picks up exactly where you left off
-- **OBS crashed?** → State was saved within the last second
-- **Changing scenes mid-session?** → Timer state is always preserved
-
-A "Resume Previous Session" button appears in the script panel when a saved state is detected.
+The timer saves state to `pomodoro_state.json` every second. Resume after crashes, OBS restarts, or stream interruptions via the "Resume Previous Session" button.
 
 ## Hotkeys
 
-After loading the script, go to **Settings** → **Hotkeys** and search for "Pomodoro":
+Go to **Settings** → **Hotkeys** and search for "Pomodoro":
 
 | Hotkey | Action |
 |--------|--------|
 | Pomodoro: Start / Pause | Toggle timer on/off |
-| Pomodoro: Stop | Stop and reset to Focus |
+| Pomodoro: Stop | Stop and reset |
 | Pomodoro: Skip Session | Jump to next session |
-
-> **Stream Deck users**: These hotkeys work with Stream Deck's OBS integration — assign them to physical buttons for one-touch control.
 
 ## Configuration
 
-All settings are available in the script panel (**Tools** → **Scripts** → select the script):
+All settings in **Tools** → **Scripts** → select the script:
 
 ### Timer Mode
 - **Timer Mode** — Pomodoro / Stopwatch / Countdown / Custom Intervals
-- **Countdown Duration** — for Countdown mode (1–480 min, default: 25)
-- **Custom Intervals** — text field for `Name:Min,...` segments
+- **Countdown Duration** — for Countdown mode (1–480 min)
+- **Custom Intervals** — `Name:Min,...` format
 
 ### Durations (Pomodoro)
 - Focus Duration (1–120 min, default: 25)
 - Short Break (1–30 min, default: 5)
 - Long Break (1–60 min, default: 15)
 - Long Break interval (every N cycles, default: 4)
+- Starting Session Offset (default: 0)
 
 ### Behavior
-- **Auto-start Next Session / Loop** — auto-advance or loop custom intervals
-- **Show Progress Bar** — toggle the visual progress bar
-- **Goal Sessions** — target focus session count for "Done: X/Y"
-- **Break Suggestions** — comma-separated list of break tips
+- **Auto-start Next Session / Loop**
+- **Show Progress Bar**
+- **Enable Overtime** — negative timer
+- **Break Suggestions** — comma-separated tips
+- **Log Sessions to CSV File**
 
-### Stream Integration
-- **Auto-start Timer on Stream Start** — timer begins when you go live
-- **Auto-stop Timer on Stream End** — timer stops and shows summary on stream end
-- **Add Recording Chapter Markers** — insert chapters at session transitions (default: on)
+### Volume Ducking
+- **Volume Ducking Source** — music source dropdown
+- **Focus Volume %** — slider (default: 30%)
+- **Break Volume %** — slider (default: 80%)
+- **Smooth Volume Fade** — 3-second ease-in-out
 
-### Scene Switching
-- **Enable Scene Switching** — master toggle
-- **Focus Scene / Short Break Scene / Long Break Scene** — scene dropdowns
+### Filter Toggle
+- **Filter Toggle Source** — e.g. Camera
+- **Enable During Focus** — comma-separated filter names
+- **Disable During Focus** — comma-separated filter names
 
-### Mic Control
-- **Enable Mic Control** — master toggle
-- **Mute Mic During Focus** — mute during focus, unmute on break (or vice versa)
-- **Mic Source** — dropdown to select your mic
-
-### Source Visibility
-- **Hide During Focus** — dropdown to select a source to hide during focus sessions
+### Scene Switching, Mic Control, Source Visibility
+- Enable/configure each from dedicated sections
 
 ### Messages
-All session and transition messages are customizable — change "Focus Time" to "Deep Work", "Short Break" to "Stretch Break", etc.
+All session and transition messages are customizable.
+
+## State File (External API)
+
+The `pomodoro_state.json` file is the **public API** for external tools. Any bot, Stream Deck plugin, or custom application can read it:
+
+```json
+{
+  "version": "4.0.0",
+  "timer_mode": "pomodoro",
+  "is_running": true,
+  "session_type": "Focus",
+  "current_time": 1234,
+  "total_time": 1500,
+  "completed_focus_sessions": 2,
+  "goal_sessions": 6,
+  "total_focus_seconds": 3000,
+  "is_overtime": false,
+  "overtime_seconds": 0,
+  "next_session_type": "Short Break",
+  "next_session_in": 1234,
+  "sessions_remaining": 4,
+  "break_suggestion": "Stretch!",
+  "stream_duration": 7200,
+  "timestamp": 1743385200
+}
+```
+
+Use this for chat bot commands (`!timer`, `!focus`), Stream Deck displays, or mobile dashboards.
 
 ## File Structure
 
@@ -247,6 +301,7 @@ sbobs/
 ├── timer_overlay.html        # Browser Source overlay (viewers)
 ├── timer_dock.html           # Custom Browser Dock (streamer)
 ├── pomodoro_state.json       # Auto-generated state file (git-ignored)
+├── session_history.csv       # Auto-generated session log (git-ignored)
 ├── README.md
 ├── LICENSE
 └── .gitignore
@@ -265,6 +320,7 @@ sbobs/
 - [x] **v2.2** — Scene switching, chapter markers, mic control, stream awareness
 - [x] **v3.0** — Browser Source overlay + dockable stats panel
 - [x] **v3.1** — Timer modes, break suggestions, source visibility
+- [x] **v4.0** — Volume ducking, filter toggle, overtime, session log, overlay themes, extended API
 
 ## Use Cases
 
@@ -277,6 +333,7 @@ sbobs/
 | 🎙️ Podcast | Guest segment | Transition / Ads |
 | 🎨 Creative | Drawing / Coding | Showcase / Feedback |
 | 📺 Event | Main content | Intermission |
+| 🤝 Body doubling | Focused work | Accountability check-in |
 
 ## License
 
