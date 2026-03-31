@@ -1,6 +1,7 @@
 --[[
-    OBS Pomodoro Timer v2.0.0
-    Focus/Break session timer with hotkeys, alerts, backgrounds, and progress tracking.
+    OBS Session Timer v2.1.0
+    Session timer and environment controller for OBS Studio.
+    Hotkeys, audio alerts, background media (images + video), session persistence.
 
     https://github.com/bhaskarjha-com/sbobs
     License: MIT
@@ -13,7 +14,7 @@ if not obs then
     return
 end
 
-local VERSION = "2.0.0"
+local VERSION = "2.1.0"
 
 ------------------------------------------------------------------------
 -- State
@@ -27,6 +28,8 @@ local session_type = "Focus"
 local show_transition = false
 local transition_timer = 0
 local transition_message = ""
+local autosave_counter = 0
+local has_pending_resume = false
 
 ------------------------------------------------------------------------
 -- Configuration (loaded from settings via script_update)
@@ -40,13 +43,14 @@ local transition_display_time = 2
 local show_progress_bar = true
 local auto_start_next = true
 local progress_bar_length = 100
+local autosave_interval = 30
 
 -- Source names (selected via dropdowns)
 local focus_count_source = ""
 local message_source = ""
 local time_source = ""
 local progress_bar_source = ""
-local background_image_source = ""
+local background_media_source = ""
 local alert_source_name = ""
 
 -- Session messages
@@ -58,10 +62,10 @@ local transition_to_short_break_message = "Time for a short break!"
 local transition_to_focus_message = "Back to focus time!"
 local transition_to_long_break_message = "Time for a long break!"
 
--- Asset paths
-local focus_background_image = ""
-local short_break_background_image = ""
-local long_break_background_image = ""
+-- Asset paths (now called "background media" — supports images and video)
+local focus_background_media = ""
+local short_break_background_media = ""
+local long_break_background_media = ""
 local focus_alert_sound_path = ""
 local short_break_alert_sound_path = ""
 local long_break_alert_sound_path = ""
@@ -97,6 +101,125 @@ local function format_time(seconds)
     return string.format("%02d:%02d", math.floor(seconds / 60), seconds % 60)
 end
 
+local function get_state_file_path()
+    return obs.script_path() .. "pomodoro_state.json"
+end
+
+------------------------------------------------------------------------
+-- Session Persistence
+------------------------------------------------------------------------
+local function save_state()
+    local path = get_state_file_path()
+    local file = io.open(path, "w")
+    if not file then
+        log("Warning: Could not write state file: " .. path)
+        return
+    end
+
+    -- Manual JSON serialization (no external libs needed)
+    local json = string.format(
+        '{\n' ..
+        '  "version": "%s",\n' ..
+        '  "is_running": %s,\n' ..
+        '  "is_paused": %s,\n' ..
+        '  "session_type": "%s",\n' ..
+        '  "current_time": %d,\n' ..
+        '  "cycle_count": %d,\n' ..
+        '  "completed_focus_sessions": %d,\n' ..
+        '  "timestamp": %d\n' ..
+        '}',
+        VERSION,
+        tostring(is_running),
+        tostring(is_paused),
+        session_type,
+        current_time,
+        cycle_count,
+        completed_focus_sessions,
+        os.time()
+    )
+
+    file:write(json)
+    file:close()
+end
+
+local function load_state()
+    local path = get_state_file_path()
+    local file = io.open(path, "r")
+    if not file then return nil end
+
+    local content = file:read("*all")
+    file:close()
+
+    if not content or content == "" then return nil end
+
+    -- Simple JSON parsing via pattern matching (no external libs)
+    local function get_string(key)
+        return content:match('"' .. key .. '":%s*"([^"]*)"')
+    end
+    local function get_number(key)
+        local val = content:match('"' .. key .. '":%s*(%d+)')
+        return val and tonumber(val) or nil
+    end
+    local function get_bool(key)
+        local val = content:match('"' .. key .. '":%s*(%a+)')
+        return val == "true"
+    end
+
+    local state = {
+        version = get_string("version"),
+        is_running = get_bool("is_running"),
+        is_paused = get_bool("is_paused"),
+        session_type = get_string("session_type"),
+        current_time = get_number("current_time"),
+        cycle_count = get_number("cycle_count"),
+        completed_focus_sessions = get_number("completed_focus_sessions"),
+        timestamp = get_number("timestamp"),
+    }
+
+    -- Validate required fields
+    if not state.session_type or not state.current_time then
+        log("State file corrupt or incomplete — ignoring")
+        return nil
+    end
+
+    -- Validate session_type is a known value
+    if state.session_type ~= "Focus" and
+       state.session_type ~= "Short Break" and
+       state.session_type ~= "Long Break" then
+        log("State file has unknown session type: " .. state.session_type)
+        return nil
+    end
+
+    return state
+end
+
+local function delete_state_file()
+    local path = get_state_file_path()
+    os.remove(path)
+end
+
+local function apply_saved_state(state)
+    session_type = state.session_type
+    current_time = state.current_time
+    cycle_count = state.cycle_count or 0
+    completed_focus_sessions = state.completed_focus_sessions or 0
+
+    -- If the timer was running when saved, resume it in a paused state
+    -- so the user can manually restart (prevents unexpected background timers)
+    if state.is_running then
+        is_running = true
+        is_paused = true
+        log("Resumed — " .. session_type .. " at " .. format_time(current_time) .. " (paused)")
+    else
+        is_running = false
+        is_paused = false
+    end
+
+    has_pending_resume = false
+    update_display_texts()
+    update_background_media()
+end
+
 ------------------------------------------------------------------------
 -- OBS Source Interaction
 ------------------------------------------------------------------------
@@ -112,22 +235,36 @@ local function update_obs_source_text(source_name, text)
     end
 end
 
-local function update_background_image()
-    if not background_image_source or background_image_source == "" then return end
+local function update_background_media()
+    if not background_media_source or background_media_source == "" then return end
 
-    local image_map = {
-        Focus = focus_background_image,
-        ["Short Break"] = short_break_background_image,
-        ["Long Break"] = long_break_background_image
+    local media_map = {
+        Focus = focus_background_media,
+        ["Short Break"] = short_break_background_media,
+        ["Long Break"] = long_break_background_media
     }
-    local image_path = image_map[session_type]
+    local media_path = media_map[session_type]
 
-    local source = obs.obs_get_source_by_name(background_image_source)
+    local source = obs.obs_get_source_by_name(background_media_source)
     if source then
-        if image_path and image_path ~= "" then
+        if media_path and media_path ~= "" then
+            local source_id = obs.obs_source_get_id(source)
             local settings = obs.obs_data_create()
-            obs.obs_data_set_string(settings, "file", image_path)
-            obs.obs_source_update(source, settings)
+
+            if source_id == "ffmpeg_source" then
+                -- Media Source: use local_file, enable looping, restart playback
+                obs.obs_data_set_string(settings, "local_file", media_path)
+                obs.obs_data_set_bool(settings, "is_local_file", true)
+                obs.obs_data_set_bool(settings, "looping", true)
+                obs.obs_data_set_bool(settings, "restart_on_activate", true)
+                obs.obs_source_update(source, settings)
+                obs.obs_source_media_restart(source)
+            else
+                -- Image Source or anything else: use "file" property
+                obs.obs_data_set_string(settings, "file", media_path)
+                obs.obs_source_update(source, settings)
+            end
+
             obs.obs_data_release(settings)
         end
         obs.obs_source_release(source)
@@ -215,7 +352,7 @@ local function update_session(new_type, duration, message)
     session_type = new_type
     current_time = duration
     show_transition_msg(message)
-    update_background_image()
+    update_background_media()
     play_alert_sound()
 end
 
@@ -236,6 +373,9 @@ local function switch_session()
         is_paused = true
         log("Session changed — waiting for manual resume")
     end
+
+    -- Save state on every session transition
+    save_state()
 end
 
 ------------------------------------------------------------------------
@@ -257,6 +397,13 @@ local function timer_tick()
         end
     end
     update_display_texts()
+
+    -- Auto-save every N seconds for crash resilience
+    autosave_counter = autosave_counter + 1
+    if autosave_counter >= autosave_interval then
+        autosave_counter = 0
+        save_state()
+    end
 end
 
 ------------------------------------------------------------------------
@@ -273,7 +420,8 @@ local function start_timer()
         log("Timer started — " .. session_type .. " (" .. format_time(current_time) .. ")")
     end
     update_display_texts()
-    update_background_image()
+    update_background_media()
+    save_state()
 end
 
 local function toggle_pause()
@@ -284,6 +432,7 @@ local function toggle_pause()
     is_paused = not is_paused
     log(is_paused and "Timer paused" or "Timer resumed")
     update_display_texts()
+    save_state()
 end
 
 local function stop_timer()
@@ -295,6 +444,7 @@ local function stop_timer()
     show_transition = false
     log("Timer stopped")
     update_display_texts()
+    delete_state_file()
 end
 
 local function reset_timer()
@@ -302,6 +452,7 @@ local function reset_timer()
     completed_focus_sessions = 0
     log("Timer reset — all progress cleared")
     update_display_texts()
+    delete_state_file()
 end
 
 local function skip_session()
@@ -313,6 +464,16 @@ local function skip_session()
     switch_session()
     if is_paused then
         is_paused = false
+    end
+end
+
+local function resume_previous_session()
+    local state = load_state()
+    if state then
+        apply_saved_state(state)
+        log("Resumed previous session")
+    else
+        log("No saved session to resume")
     end
 end
 
@@ -354,7 +515,7 @@ end
 -- OBS Script Interface
 ------------------------------------------------------------------------
 function script_description()
-    return "Pomodoro Timer v" .. VERSION ..
+    return "Session Timer v" .. VERSION ..
         " — Focus/Break sessions with alerts, backgrounds, and progress tracking."
 end
 
@@ -367,6 +528,12 @@ function script_properties()
     obs.obs_properties_add_button(props, "stop_button", "⏹  Stop", stop_timer)
     obs.obs_properties_add_button(props, "skip_button", "⏭  Skip Session", skip_session)
     obs.obs_properties_add_button(props, "reset_button", "↺  Reset All", reset_timer)
+
+    -- ── Resume ──
+    if has_pending_resume then
+        obs.obs_properties_add_button(props, "resume_button",
+            "⏪  Resume Previous Session", resume_previous_session)
+    end
 
     -- ── Durations ──
     obs.obs_properties_add_int(props, "focus_duration", "Focus Duration (min)", 1, 120, 1)
@@ -399,8 +566,8 @@ function script_properties()
         "Progress Bar Source", obs.OBS_COMBO_TYPE_LIST, obs.OBS_COMBO_FORMAT_STRING)
     populate_source_list(p)
 
-    p = obs.obs_properties_add_list(props, "background_image_source",
-        "Background Image Source", obs.OBS_COMBO_TYPE_LIST, obs.OBS_COMBO_FORMAT_STRING)
+    p = obs.obs_properties_add_list(props, "background_media_source",
+        "Background Media Source", obs.OBS_COMBO_TYPE_LIST, obs.OBS_COMBO_FORMAT_STRING)
     populate_source_list(p)
 
     p = obs.obs_properties_add_list(props, "alert_source_name",
@@ -415,13 +582,16 @@ function script_properties()
     obs.obs_properties_add_path(props, "long_break_alert_sound_path",
         "Long Break Alert Sound", obs.OBS_PATH_FILE, "Audio (*.mp3 *.ogg *.wav)", nil)
 
-    -- ── Background Images ──
-    obs.obs_properties_add_path(props, "focus_background_image",
-        "Focus Background", obs.OBS_PATH_FILE, "Images (*.png *.jpg *.jpeg *.bmp *.gif)", nil)
-    obs.obs_properties_add_path(props, "short_break_background_image",
-        "Short Break Background", obs.OBS_PATH_FILE, "Images (*.png *.jpg *.jpeg *.bmp *.gif)", nil)
-    obs.obs_properties_add_path(props, "long_break_background_image",
-        "Long Break Background", obs.OBS_PATH_FILE, "Images (*.png *.jpg *.jpeg *.bmp *.gif)", nil)
+    -- ── Background Media (images or videos) ──
+    obs.obs_properties_add_path(props, "focus_background_media",
+        "Focus Background", obs.OBS_PATH_FILE,
+        "Media (*.png *.jpg *.jpeg *.bmp *.gif *.mp4 *.webm *.mov *.mkv)", nil)
+    obs.obs_properties_add_path(props, "short_break_background_media",
+        "Short Break Background", obs.OBS_PATH_FILE,
+        "Media (*.png *.jpg *.jpeg *.bmp *.gif *.mp4 *.webm *.mov *.mkv)", nil)
+    obs.obs_properties_add_path(props, "long_break_background_media",
+        "Long Break Background", obs.OBS_PATH_FILE,
+        "Media (*.png *.jpg *.jpeg *.bmp *.gif *.mp4 *.webm *.mov *.mkv)", nil)
 
     -- ── Messages ──
     obs.obs_properties_add_text(props, "focus_message",
@@ -474,7 +644,7 @@ function script_update(settings)
     message_source = obs.obs_data_get_string(settings, "message_source")
     time_source = obs.obs_data_get_string(settings, "time_source")
     progress_bar_source = obs.obs_data_get_string(settings, "progress_bar_source")
-    background_image_source = obs.obs_data_get_string(settings, "background_image_source")
+    background_media_source = obs.obs_data_get_string(settings, "background_media_source")
     alert_source_name = obs.obs_data_get_string(settings, "alert_source_name")
 
     -- Messages
@@ -490,10 +660,10 @@ function script_update(settings)
     short_break_alert_sound_path = obs.obs_data_get_string(settings, "short_break_alert_sound_path")
     long_break_alert_sound_path = obs.obs_data_get_string(settings, "long_break_alert_sound_path")
 
-    -- Background images
-    focus_background_image = obs.obs_data_get_string(settings, "focus_background_image")
-    short_break_background_image = obs.obs_data_get_string(settings, "short_break_background_image")
-    long_break_background_image = obs.obs_data_get_string(settings, "long_break_background_image")
+    -- Background media
+    focus_background_media = obs.obs_data_get_string(settings, "focus_background_media")
+    short_break_background_media = obs.obs_data_get_string(settings, "short_break_background_media")
+    long_break_background_media = obs.obs_data_get_string(settings, "long_break_background_media")
 
     -- Sync display when timer is idle
     if not is_running then
@@ -526,6 +696,15 @@ function script_load(settings)
     load_hotkey(hotkey_stop, "pomodoro_hotkey_stop")
     load_hotkey(hotkey_skip, "pomodoro_hotkey_skip")
 
+    -- Check for saved session state
+    local saved_state = load_state()
+    if saved_state and saved_state.is_running then
+        has_pending_resume = true
+        log("Found saved session: " .. saved_state.session_type ..
+            " at " .. format_time(saved_state.current_time) ..
+            " — use 'Resume Previous Session' button to restore")
+    end
+
     log("Loaded v" .. VERSION)
 end
 
@@ -538,9 +717,20 @@ function script_save(settings)
     save_hotkey(hotkey_start_pause, "pomodoro_hotkey_start_pause")
     save_hotkey(hotkey_stop, "pomodoro_hotkey_stop")
     save_hotkey(hotkey_skip, "pomodoro_hotkey_skip")
+
+    -- Persist timer state on OBS save
+    if is_running then
+        save_state()
+    end
 end
 
 function script_unload()
+    -- Save state before unloading if timer was active
+    if is_running then
+        save_state()
+        log("State saved for resume")
+    end
+
     obs.timer_remove(timer_tick)
     obs.obs_hotkey_unregister(hotkey_start_pause)
     obs.obs_hotkey_unregister(hotkey_stop)
