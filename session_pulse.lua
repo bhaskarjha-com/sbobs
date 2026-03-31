@@ -265,11 +265,11 @@ local function format_duration_human(seconds)
 end
 
 local function get_state_file_path()
-    return obs.script_path() .. "session_state.json"
+    return script_path() .. "session_state.json"
 end
 
 local function get_log_file_path()
-    return obs.script_path() .. "session_history.csv"
+    return script_path() .. "session_history.csv"
 end
 
 local function parse_suggestions(text)
