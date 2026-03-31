@@ -10,6 +10,7 @@
 
 <p align="center">
   <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-5.3.1-6366f1?style=flat-square" alt="Version"></a>
+  <a href="https://github.com/bhaskarjha-com/sbobs/actions/workflows/test.yml"><img src="https://img.shields.io/github/actions/workflow/status/bhaskarjha-com/sbobs/test.yml?style=flat-square&label=tests" alt="Tests"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-22c55e?style=flat-square" alt="License"></a>
   <a href="https://obsproject.com"><img src="https://img.shields.io/badge/OBS_Studio-28%2B-1a1a2e?style=flat-square" alt="OBS"></a>
   <a href="#compatibility"><img src="https://img.shields.io/badge/platform-Win%20%7C%20Mac%20%7C%20Linux-94a3b8?style=flat-square" alt="Platform"></a>
