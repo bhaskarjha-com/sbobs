@@ -1,6 +1,6 @@
 --[[
-    OBS Session Timer v5.0.0
-    Multi-mode session orchestrator for OBS Studio.
+    SessionPulse v5.0.0
+    Session automation engine for OBS Studio.
     Wallclock-based timing, WebSocket dock control, scene/source/filter/volume
     automation, warning alerts, time adjustment, session logging, chapter markers,
     browser overlays, and state persistence with atomic writes.
@@ -12,7 +12,7 @@
 local obs = obslua
 
 if not obs then
-    print("[Pomodoro] Error: This script must be run within OBS Studio.")
+    print("[SessionPulse] Error: This script must be run within OBS Studio.")
     return
 end
 
@@ -184,7 +184,7 @@ local hotkey_sub_time = obs.OBS_INVALID_HOTKEY_ID
 -- Helpers
 ------------------------------------------------------------------------
 local function log(msg)
-    print("[Pomodoro] " .. msg)
+    print("[SessionPulse] " .. msg)
 end
 
 local function mark_dirty()
@@ -265,7 +265,7 @@ local function format_duration_human(seconds)
 end
 
 local function get_state_file_path()
-    return obs.script_path() .. "pomodoro_state.json"
+    return obs.script_path() .. "session_state.json"
 end
 
 local function get_log_file_path()
@@ -1486,8 +1486,8 @@ end
 -- OBS Script Interface
 ------------------------------------------------------------------------
 function script_description()
-    return "Session Timer v" .. VERSION ..
-        " — Multi-mode session orchestrator with full OBS environment control."
+    return "SessionPulse v" .. VERSION ..
+        " — Session automation engine for OBS Studio."
 end
 
 function script_properties()
@@ -1807,26 +1807,26 @@ function script_load(settings)
     obs.timer_add(timer_tick, 1000)
 
     hotkey_start_pause = obs.obs_hotkey_register_frontend(
-        "pomodoro_start_pause", "Pomodoro: Start / Pause", on_hotkey_start_pause)
+        "session_pulse_start_pause", "SessionPulse: Start / Pause", on_hotkey_start_pause)
     hotkey_stop = obs.obs_hotkey_register_frontend(
-        "pomodoro_stop", "Pomodoro: Stop", on_hotkey_stop)
+        "session_pulse_stop", "SessionPulse: Stop", on_hotkey_stop)
     hotkey_skip = obs.obs_hotkey_register_frontend(
-        "pomodoro_skip", "Pomodoro: Skip Session", on_hotkey_skip)
+        "session_pulse_skip", "SessionPulse: Skip Session", on_hotkey_skip)
     hotkey_add_time = obs.obs_hotkey_register_frontend(
-        "pomodoro_add_time", "Pomodoro: Add Time", on_hotkey_add_time)
+        "session_pulse_add_time", "SessionPulse: Add Time", on_hotkey_add_time)
     hotkey_sub_time = obs.obs_hotkey_register_frontend(
-        "pomodoro_sub_time", "Pomodoro: Subtract Time", on_hotkey_sub_time)
+        "session_pulse_sub_time", "SessionPulse: Subtract Time", on_hotkey_sub_time)
 
     local function load_hotkey(id, key)
         local a = obs.obs_data_get_array(settings, key)
         obs.obs_hotkey_load(id, a)
         obs.obs_data_array_release(a)
     end
-    load_hotkey(hotkey_start_pause, "pomodoro_hotkey_start_pause")
-    load_hotkey(hotkey_stop, "pomodoro_hotkey_stop")
-    load_hotkey(hotkey_skip, "pomodoro_hotkey_skip")
-    load_hotkey(hotkey_add_time, "pomodoro_hotkey_add_time")
-    load_hotkey(hotkey_sub_time, "pomodoro_hotkey_sub_time")
+    load_hotkey(hotkey_start_pause, "session_pulse_hotkey_start_pause")
+    load_hotkey(hotkey_stop, "session_pulse_hotkey_stop")
+    load_hotkey(hotkey_skip, "session_pulse_hotkey_skip")
+    load_hotkey(hotkey_add_time, "session_pulse_hotkey_add_time")
+    load_hotkey(hotkey_sub_time, "session_pulse_hotkey_sub_time")
 
     obs.obs_frontend_add_event_callback(on_frontend_event)
 
@@ -1845,11 +1845,11 @@ function script_save(settings)
         obs.obs_data_set_array(settings, key, a)
         obs.obs_data_array_release(a)
     end
-    save_hotkey(hotkey_start_pause, "pomodoro_hotkey_start_pause")
-    save_hotkey(hotkey_stop, "pomodoro_hotkey_stop")
-    save_hotkey(hotkey_skip, "pomodoro_hotkey_skip")
-    save_hotkey(hotkey_add_time, "pomodoro_hotkey_add_time")
-    save_hotkey(hotkey_sub_time, "pomodoro_hotkey_sub_time")
+    save_hotkey(hotkey_start_pause, "session_pulse_hotkey_start_pause")
+    save_hotkey(hotkey_stop, "session_pulse_hotkey_stop")
+    save_hotkey(hotkey_skip, "session_pulse_hotkey_skip")
+    save_hotkey(hotkey_add_time, "session_pulse_hotkey_add_time")
+    save_hotkey(hotkey_sub_time, "session_pulse_hotkey_sub_time")
 
     if is_running then save_state(true) end
 end

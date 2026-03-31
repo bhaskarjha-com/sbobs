@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>Session Timer — Remote</title>
+<title>SessionPulse — Remote</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -409,11 +409,11 @@ async function trigger(name) {
   catch(e) { console.warn('Trigger failed:', name); }
 }
 
-btnPlay.addEventListener('click', () => trigger('pomodoro_start_pause'));
-btnStop.addEventListener('click', () => trigger('pomodoro_stop'));
-btnSkip.addEventListener('click', () => trigger('pomodoro_skip'));
-btnPlus.addEventListener('click', () => trigger('pomodoro_add_time'));
-btnMinus.addEventListener('click', () => trigger('pomodoro_sub_time'));
+btnPlay.addEventListener('click', () => trigger('session_pulse_start_pause'));
+btnStop.addEventListener('click', () => trigger('session_pulse_stop'));
+btnSkip.addEventListener('click', () => trigger('session_pulse_skip'));
+btnPlus.addEventListener('click', () => trigger('session_pulse_add_time'));
+btnMinus.addEventListener('click', () => trigger('session_pulse_sub_time'));
 
 // Formatting
 function fmt(s) {
@@ -445,7 +445,7 @@ async function pollState() {
   // Otherwise show minimal UI with just controls
   try {
     const host = localStorage.getItem('obs_remote_host') || '127.0.0.1';
-    const resp = await fetch(`http://${host}:8080/pomodoro_state.json?t=${Date.now()}`);
+    const resp = await fetch(`http://${host}:8080/session_state.json?t=${Date.now()}`);
     if (resp.ok) {
       lastState = await resp.json();
       updateUI(lastState);
@@ -455,7 +455,7 @@ async function pollState() {
 
   // Fallback: try same-origin fetch
   try {
-    const resp = await fetch('pomodoro_state.json?t=' + Date.now());
+    const resp = await fetch('session_state.json?t=' + Date.now());
     if (resp.ok) {
       lastState = await resp.json();
       updateUI(lastState);

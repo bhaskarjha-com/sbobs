@@ -1,6 +1,6 @@
-# OBS Session Timer
+# SessionPulse
 
-A powerful multi-mode session orchestrator for OBS Studio. Built in pure Lua — zero dependencies, zero setup friction.
+Session automation engine for OBS Studio — scenes, audio, filters, and overlays orchestrated by one timer. Built in pure Lua — zero dependencies, zero setup friction.
 
 The timer is the heartbeat. Scenes, audio, filters, sources, and overlays all pulse to that beat. Works for any timed session format: study streams, HIIT workouts, cooking, meditation, podcasts, events, and accountability/body doubling streams.
 
@@ -67,7 +67,7 @@ The timer is the heartbeat. Scenes, audio, filters, sources, and overlays all pu
 
 1. Download the entire folder (or clone the repo)
 2. Open OBS Studio → **Tools** → **Scripts**
-3. Click **+** and select `obs_pomodoro_timer.lua`
+3. Click **+** and select `session_pulse.lua`
 4. Configure settings in the script panel
 
 ## Setup
@@ -134,7 +134,7 @@ Combine parameters: `timer_overlay.html?theme=neon&size=300&font=Outfit`
 Add a control dashboard that docks into the OBS window:
 
 1. In OBS, go to **View** → **Docks** → **Custom Browser Docks**
-2. Enter dock name: `Session Timer`
+2. Enter dock name: `SessionPulse`
 3. Enter URL: `file:///` followed by the full path to `timer_dock.html`
    - Example: `file:///D:/dev/pro/sbobs/timer_dock.html`
 4. Click **Apply** — the dock appears as a draggable panel
@@ -277,7 +277,7 @@ Enable **"Enable Overtime"** to prevent auto-switching when a session ends:
 
 ## Session Persistence
 
-The timer saves state to `pomodoro_state.json` on every change (not every second — only when something meaningful changes). Uses atomic writes (temp file + rename) to prevent corruption. Resume after crashes, OBS restarts, or stream interruptions via the "Resume Previous Session" button.
+The timer saves state to `session_state.json` on every change (not every second — only when something meaningful changes). Uses atomic writes (temp file + rename) to prevent corruption. Resume after crashes, OBS restarts, or stream interruptions via the "Resume Previous Session" button.
 
 ### State Migration
 
@@ -285,15 +285,15 @@ v5.0 changed the timer engine from tick-counting to wallclock-based timing. Old 
 
 ## Hotkeys
 
-Go to **Settings** → **Hotkeys** and search for "Pomodoro":
+Go to **Settings** → **Hotkeys** and search for "SessionPulse":
 
 | Hotkey | Action |
 |--------|--------|
-| Pomodoro: Start / Pause | Toggle timer on/off |
-| Pomodoro: Stop | Stop and reset |
-| Pomodoro: Skip Session | Jump to next session |
-| Pomodoro: Add Time | Add N minutes to current session |
-| Pomodoro: Subtract Time | Subtract N minutes from current session |
+| SessionPulse: Start / Pause | Toggle timer on/off |
+| SessionPulse: Stop | Stop and reset |
+| SessionPulse: Skip Session | Jump to next session |
+| SessionPulse: Add Time | Add N minutes to current session |
+| SessionPulse: Subtract Time | Subtract N minutes from current session |
 
 The time adjustment increment (default: 5 minutes) is configurable in script settings.
 
@@ -339,7 +339,7 @@ All session and transition messages are customizable.
 
 ## State File (External API)
 
-The `pomodoro_state.json` file is the **public API** for external tools. Any bot, Stream Deck plugin, or custom application can read it:
+The `session_state.json` file is the **public API** for external tools. Any bot, Stream Deck plugin, or custom application can read it:
 
 ```json
 {
@@ -373,13 +373,13 @@ The `chat_status_line` field is a pre-formatted string ready for chat bot respon
 
 ```
 sbobs/
-├── obs_pomodoro_timer.lua    # Main script (load this in OBS)
+├── session_pulse.lua         # Main script (load this in OBS)
 ├── timer_overlay.html        # Browser Source overlay — circular ring (viewers)
 ├── timer_overlay_bar.html    # Browser Source overlay — horizontal bar (viewers)
 ├── timer_dock.html           # Custom Browser Dock with WebSocket control (streamer)
 ├── timer_stats.html          # Productivity stats dashboard (streamer)
 ├── timer_remote.html         # Mobile remote control page (phone)
-├── pomodoro_state.json       # Auto-generated state file (git-ignored)
+├── session_state.json        # Auto-generated state file (git-ignored)
 ├── session_history.csv       # Auto-generated session log (git-ignored)
 ├── README.md
 ├── LICENSE

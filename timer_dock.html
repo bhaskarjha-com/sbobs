@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Session Timer — Control Dock</title>
+<title>SessionPulse — Control Dock</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -321,7 +321,7 @@
 <body>
 
 <div class="header">
-  <span class="header-title">Session Timer</span>
+  <span class="header-title">SessionPulse</span>
   <div class="header-badges">
     <span class="mode-badge" id="modeBadge">pomodoro</span>
     <div class="ws-indicator" id="wsIndicator" title="Click to reconnect">
@@ -502,15 +502,15 @@ async function triggerHotkey(hotkeyName) {
   }
 }
 
-btnStartPause.addEventListener('click', () => triggerHotkey('pomodoro_start_pause'));
-btnStop.addEventListener('click', () => triggerHotkey('pomodoro_stop'));
-btnSkip.addEventListener('click', () => triggerHotkey('pomodoro_skip'));
-btnAddTime.addEventListener('click', () => triggerHotkey('pomodoro_add_time'));
-btnSubTime.addEventListener('click', () => triggerHotkey('pomodoro_sub_time'));
+btnStartPause.addEventListener('click', () => triggerHotkey('session_pulse_start_pause'));
+btnStop.addEventListener('click', () => triggerHotkey('session_pulse_stop'));
+btnSkip.addEventListener('click', () => triggerHotkey('session_pulse_skip'));
+btnAddTime.addEventListener('click', () => triggerHotkey('session_pulse_add_time'));
+btnSubTime.addEventListener('click', () => triggerHotkey('session_pulse_sub_time'));
 btnReset.addEventListener('click', async () => {
   // Reset = Stop then clear. We simulate by triggering stop.
   // Since there's no dedicated reset hotkey, stop is the closest action.
-  await triggerHotkey('pomodoro_stop');
+  await triggerHotkey('session_pulse_stop');
 });
 
 // ── Chat Copy ──
@@ -707,7 +707,7 @@ let lastState = null;
 
 async function poll() {
   try {
-    const resp = await fetch('pomodoro_state.json?t=' + Date.now());
+    const resp = await fetch('session_state.json?t=' + Date.now());
     if (resp.ok) {
       lastState = await resp.json();
       update(lastState);

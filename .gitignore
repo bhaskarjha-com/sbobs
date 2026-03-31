@@ -1,5 +1,6 @@
 # Runtime state (auto-generated)
-pomodoro_state.json
+session_state.json
+session_state.json.tmp
 session_history.csv
 
 # OS
