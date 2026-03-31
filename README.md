@@ -13,15 +13,19 @@ Originally designed for "study with me" streams, but works for any timed session
 - **Session persistence** — save and restore timer state across OBS restarts and stream interruptions
 - **Auto-start toggle** — auto-advance between sessions or pause and wait for manual resume
 - **Session tracking** — "Done: 3/6" counter with configurable goal
+- **Total focus time** — tracks cumulative focus seconds across the entire session
 - **Crash resilience** — auto-saves state every 30 seconds
 
 ### OBS Integration
+- **Scene switching** — auto-switch to different OBS scenes per session (Focus Scene, Break Scene, etc.)
+- **Recording chapter markers** — auto-insert chapter markers at every session transition (OBS 30.2+, MP4/MKV)
+- **Mic control** — auto-mute/unmute your mic per session type (mute during focus, unmute on break)
+- **Stream-aware** — auto-start timer when you go live, auto-stop (with summary) when stream ends
 - **Hotkey support** — Start/Pause, Stop, and Skip from anywhere in OBS
 - **Background media** — swap background images or looping videos per session type
 - **Audio alerts** — per-session custom sounds (focus, short break, long break)
-- **Source dropdowns** — pick OBS sources from a list instead of typing names
+- **Source dropdowns** — pick OBS sources and scenes from lists instead of typing names
 - **Progress bar** — character-based bar that fills as the session progresses
-- **Transition messages** — brief overlay messages between sessions
 
 ### Technical
 - **Pure Lua** — no Python, no external installs, no compilation
@@ -53,6 +57,32 @@ Create these sources in your scene before configuring the script:
 
 > **Note**: Source names are picked from dropdowns in the script settings — no manual typing needed.
 
+### Scene Switching (Optional)
+
+To have OBS automatically switch scenes on session transitions:
+
+1. Create separate scenes for each session type (e.g. "Study Scene", "Break Scene")
+2. Enable **"Enable Scene Switching"** in the script settings
+3. Assign scenes from the dropdowns: Focus Scene, Short Break Scene, Long Break Scene
+
+Leave any scene dropdown set to "(None)" to skip switching for that session type.
+
+### Mic Control (Optional)
+
+To have the script auto-mute/unmute your mic:
+
+1. Enable **"Enable Mic Control"** in settings
+2. Select your mic from the **"Mic Source"** dropdown
+3. Check **"Mute Mic During Focus"** to mute during focus and unmute on breaks (or uncheck for the opposite)
+
+### Recording Chapter Markers
+
+When recording in MP4 or MKV format, the script automatically inserts chapter markers at every session transition. These show up as chapters in video players and editors, making it easy to jump to specific focus segments in VODs.
+
+**Requirements**: OBS 30.2+, recording format must support chapters (Fragmented MP4 or MKV).
+
+The script gracefully handles older OBS versions — no errors if the feature isn't available.
+
 ### Background Media
 
 The script supports both **static images** and **looping videos** as backgrounds:
@@ -62,9 +92,11 @@ The script supports both **static images** and **looping videos** as backgrounds
 
 The script auto-detects the source type and handles it accordingly.
 
-### Audio Setup
+### Stream-Aware Behavior (Optional)
 
-The alert sound source must be a **Media Source** (not a regular audio input). The script changes its file path and triggers playback on each session transition.
+- **Auto-start on stream**: Timer starts automatically when you click "Start Streaming"
+- **Auto-stop on stream end**: Timer stops and shows a session summary when the stream ends
+- Both are off by default — enable them in the settings if desired
 
 ## Session Persistence
 
@@ -99,16 +131,30 @@ All settings are available in the script panel (**Tools** → **Scripts** → se
 - Long Break interval (every N cycles, default: 4)
 
 ### Behavior
-- **Auto-start Next Session** — When enabled, the next session starts immediately. When disabled, the timer pauses between sessions and waits for you to resume.
-- **Show Progress Bar** — Toggle the visual progress bar on/off
-- **Goal Sessions** — Target number of focus sessions (used in the "Done: X/Y" counter)
+- **Auto-start Next Session** — auto-advance or pause between sessions
+- **Show Progress Bar** — toggle the visual progress bar
+- **Goal Sessions** — target focus session count for "Done: X/Y"
+
+### Stream Integration
+- **Auto-start Timer on Stream Start** — timer begins when you go live
+- **Auto-stop Timer on Stream End** — timer stops and shows summary on stream end
+- **Add Recording Chapter Markers** — insert chapters at session transitions (default: on)
+
+### Scene Switching
+- **Enable Scene Switching** — master toggle
+- **Focus Scene / Short Break Scene / Long Break Scene** — scene dropdowns
+
+### Mic Control
+- **Enable Mic Control** — master toggle
+- **Mute Mic During Focus** — mute during focus, unmute on break (or vice versa)
+- **Mic Source** — dropdown to select your mic
 
 ### Messages
 All session and transition messages are customizable — change "Focus Time" to "Deep Work", "Short Break" to "Stretch Break", etc.
 
 ## Compatibility
 
-- OBS Studio 28+
+- OBS Studio 28+ (chapter markers require 30.2+)
 - Windows, macOS, Linux
 - No Python required
 
@@ -116,7 +162,7 @@ All session and transition messages are customizable — change "Focus Time" to 
 
 - [x] **v2.0** — Core rewrite: hotkeys, source dropdowns, bug fixes
 - [x] **v2.1** — Session persistence, background video support
-- [ ] **v2.2** — Scene switching per session, recording chapter markers, mic mute control
+- [x] **v2.2** — Scene switching, chapter markers, mic control, stream awareness
 - [ ] **v3.0** — Browser Source overlay (circular progress ring, animations, themes)
 - [ ] **v3.1** — Multiple timer modes (stopwatch, countdown, custom intervals)
 

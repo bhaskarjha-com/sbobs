@@ -1,7 +1,8 @@
 --[[
-    OBS Session Timer v2.1.0
+    OBS Session Timer v2.2.0
     Session timer and environment controller for OBS Studio.
-    Hotkeys, audio alerts, background media (images + video), session persistence.
+    Hotkeys, scene switching, chapter markers, mic control, audio alerts,
+    background media, session persistence, and stream-aware behavior.
 
     https://github.com/bhaskarjha-com/sbobs
     License: MIT
@@ -14,7 +15,7 @@ if not obs then
     return
 end
 
-local VERSION = "2.1.0"
+local VERSION = "2.2.0"
 
 ------------------------------------------------------------------------
 -- State
@@ -22,6 +23,7 @@ local VERSION = "2.1.0"
 local current_time = 0
 local cycle_count = 0
 local completed_focus_sessions = 0
+local total_focus_seconds = 0
 local is_running = false
 local is_paused = false
 local session_type = "Focus"
@@ -30,6 +32,7 @@ local transition_timer = 0
 local transition_message = ""
 local autosave_counter = 0
 local has_pending_resume = false
+local pending_scene_switch = nil
 
 ------------------------------------------------------------------------
 -- Configuration (loaded from settings via script_update)
@@ -44,6 +47,22 @@ local show_progress_bar = true
 local auto_start_next = true
 local progress_bar_length = 100
 local autosave_interval = 30
+
+-- Stream integration toggles
+local enable_scene_switching = false
+local enable_chapter_markers = true
+local enable_mic_control = false
+local auto_start_on_stream = false
+local auto_stop_on_stream_end = false
+
+-- Scene names (per session type)
+local focus_scene = ""
+local short_break_scene = ""
+local long_break_scene = ""
+
+-- Mic source
+local mic_source_name = ""
+local mute_mic_during_focus = true
 
 -- Source names (selected via dropdowns)
 local focus_count_source = ""
@@ -62,7 +81,7 @@ local transition_to_short_break_message = "Time for a short break!"
 local transition_to_focus_message = "Back to focus time!"
 local transition_to_long_break_message = "Time for a long break!"
 
--- Asset paths (now called "background media" — supports images and video)
+-- Asset paths
 local focus_background_media = ""
 local short_break_background_media = ""
 local long_break_background_media = ""
@@ -101,6 +120,16 @@ local function format_time(seconds)
     return string.format("%02d:%02d", math.floor(seconds / 60), seconds % 60)
 end
 
+local function format_duration_human(seconds)
+    if seconds < 60 then return seconds .. "s" end
+    local mins = math.floor(seconds / 60)
+    if mins < 60 then return mins .. "m" end
+    local hours = math.floor(mins / 60)
+    local rem_mins = mins % 60
+    if rem_mins == 0 then return hours .. "h" end
+    return hours .. "h " .. rem_mins .. "m"
+end
+
 local function get_state_file_path()
     return obs.script_path() .. "pomodoro_state.json"
 end
@@ -116,7 +145,6 @@ local function save_state()
         return
     end
 
-    -- Manual JSON serialization (no external libs needed)
     local json = string.format(
         '{\n' ..
         '  "version": "%s",\n' ..
@@ -126,6 +154,7 @@ local function save_state()
         '  "current_time": %d,\n' ..
         '  "cycle_count": %d,\n' ..
         '  "completed_focus_sessions": %d,\n' ..
+        '  "total_focus_seconds": %d,\n' ..
         '  "timestamp": %d\n' ..
         '}',
         VERSION,
@@ -135,6 +164,7 @@ local function save_state()
         current_time,
         cycle_count,
         completed_focus_sessions,
+        total_focus_seconds,
         os.time()
     )
 
@@ -152,7 +182,6 @@ local function load_state()
 
     if not content or content == "" then return nil end
 
-    -- Simple JSON parsing via pattern matching (no external libs)
     local function get_string(key)
         return content:match('"' .. key .. '":%s*"([^"]*)"')
     end
@@ -173,16 +202,15 @@ local function load_state()
         current_time = get_number("current_time"),
         cycle_count = get_number("cycle_count"),
         completed_focus_sessions = get_number("completed_focus_sessions"),
+        total_focus_seconds = get_number("total_focus_seconds"),
         timestamp = get_number("timestamp"),
     }
 
-    -- Validate required fields
     if not state.session_type or not state.current_time then
         log("State file corrupt or incomplete — ignoring")
         return nil
     end
 
-    -- Validate session_type is a known value
     if state.session_type ~= "Focus" and
        state.session_type ~= "Short Break" and
        state.session_type ~= "Long Break" then
@@ -194,8 +222,7 @@ local function load_state()
 end
 
 local function delete_state_file()
-    local path = get_state_file_path()
-    os.remove(path)
+    os.remove(get_state_file_path())
 end
 
 local function apply_saved_state(state)
@@ -203,9 +230,8 @@ local function apply_saved_state(state)
     current_time = state.current_time
     cycle_count = state.cycle_count or 0
     completed_focus_sessions = state.completed_focus_sessions or 0
+    total_focus_seconds = state.total_focus_seconds or 0
 
-    -- If the timer was running when saved, resume it in a paused state
-    -- so the user can manually restart (prevents unexpected background timers)
     if state.is_running then
         is_running = true
         is_paused = true
@@ -252,7 +278,6 @@ local function update_background_media()
             local settings = obs.obs_data_create()
 
             if source_id == "ffmpeg_source" then
-                -- Media Source: use local_file, enable looping, restart playback
                 obs.obs_data_set_string(settings, "local_file", media_path)
                 obs.obs_data_set_bool(settings, "is_local_file", true)
                 obs.obs_data_set_bool(settings, "looping", true)
@@ -260,7 +285,6 @@ local function update_background_media()
                 obs.obs_source_update(source, settings)
                 obs.obs_source_media_restart(source)
             else
-                -- Image Source or anything else: use "file" property
                 obs.obs_data_set_string(settings, "file", media_path)
                 obs.obs_source_update(source, settings)
             end
@@ -280,10 +304,7 @@ local function play_alert_sound()
     local sound_path = sound_map[session_type]
     if not sound_path or sound_path == "" then return end
 
-    if not alert_source_name or alert_source_name == "" then
-        log("Alert source not configured — skipping sound")
-        return
-    end
+    if not alert_source_name or alert_source_name == "" then return end
 
     local source = obs.obs_get_source_by_name(alert_source_name)
     if source then
@@ -294,9 +315,92 @@ local function play_alert_sound()
         obs.obs_data_release(settings)
         obs.obs_source_media_restart(source)
         obs.obs_source_release(source)
-    else
-        log("Alert source '" .. alert_source_name .. "' not found — create a Media Source with that name")
     end
+end
+
+------------------------------------------------------------------------
+-- Scene Switching
+------------------------------------------------------------------------
+local function do_scene_switch()
+    if not enable_scene_switching then return end
+
+    local scene_map = {
+        Focus = focus_scene,
+        ["Short Break"] = short_break_scene,
+        ["Long Break"] = long_break_scene
+    }
+    local target_scene = scene_map[session_type]
+    if not target_scene or target_scene == "" then return end
+
+    local source = obs.obs_get_source_by_name(target_scene)
+    if source then
+        obs.obs_frontend_set_current_scene(source)
+        obs.obs_source_release(source)
+        log("Switched to scene: " .. target_scene)
+    else
+        log("Scene '" .. target_scene .. "' not found")
+    end
+end
+
+-- Deferred scene switch to avoid calling from within timer_tick directly
+local function schedule_scene_switch()
+    if not enable_scene_switching then return end
+    pending_scene_switch = true
+end
+
+local function process_pending_scene_switch()
+    if pending_scene_switch then
+        pending_scene_switch = nil
+        do_scene_switch()
+    end
+end
+
+------------------------------------------------------------------------
+-- Mic Control
+------------------------------------------------------------------------
+local function update_mic_state()
+    if not enable_mic_control then return end
+    if not mic_source_name or mic_source_name == "" then return end
+
+    local source = obs.obs_get_source_by_name(mic_source_name)
+    if source then
+        local should_mute = (session_type == "Focus" and mute_mic_during_focus) or
+                           (session_type ~= "Focus" and not mute_mic_during_focus)
+        obs.obs_source_set_muted(source, should_mute)
+        obs.obs_source_release(source)
+        log("Mic " .. (should_mute and "muted" or "unmuted") .. " for " .. session_type)
+    end
+end
+
+------------------------------------------------------------------------
+-- Chapter Markers
+------------------------------------------------------------------------
+local function add_chapter_marker()
+    if not enable_chapter_markers then return end
+
+    -- Check if recording is active
+    if not obs.obs_frontend_recording_active() then return end
+
+    -- Build chapter name
+    local chapter_name
+    if session_type == "Focus" then
+        chapter_name = "Focus Session " .. (completed_focus_sessions + 1)
+    else
+        chapter_name = session_type
+    end
+
+    -- obs_frontend_recording_add_chapter was added in OBS 30.2
+    -- Use pcall to gracefully handle older OBS versions
+    local ok, result = pcall(function()
+        return obs.obs_frontend_recording_add_chapter(chapter_name)
+    end)
+
+    if ok and result then
+        log("Chapter marker: " .. chapter_name)
+    elseif ok then
+        log("Chapter marker failed — recording format may not support chapters")
+    end
+    -- If pcall fails, function doesn't exist (OBS < 30.2) — silently skip
 end
 
 ------------------------------------------------------------------------
@@ -316,19 +420,15 @@ local function get_session_message()
 end
 
 local function update_display_texts()
-    -- Focus count
     update_obs_source_text(focus_count_source,
         string.format("Done: %d/%d", completed_focus_sessions, goal_sessions))
 
-    -- Session message
     local message = show_transition and transition_message or get_session_message()
     if is_paused then message = message .. " (" .. paused_message .. ")" end
     update_obs_source_text(message_source, message)
 
-    -- Time
     update_obs_source_text(time_source, format_time(current_time))
 
-    -- Progress bar (fills UP as time elapses)
     if show_progress_bar then
         local total = get_duration_for_session(session_type)
         local elapsed = total - current_time
@@ -336,6 +436,13 @@ local function update_display_texts()
     else
         update_obs_source_text(progress_bar_source, "")
     end
+end
+
+local function show_session_summary()
+    local summary = string.format("Session complete: %d focus sessions, %s total focus time",
+        completed_focus_sessions, format_duration_human(total_focus_seconds))
+    update_obs_source_text(message_source, summary)
+    log(summary)
 end
 
 ------------------------------------------------------------------------
@@ -354,6 +461,9 @@ local function update_session(new_type, duration, message)
     show_transition_msg(message)
     update_background_media()
     play_alert_sound()
+    schedule_scene_switch()
+    update_mic_state()
+    add_chapter_marker()
 end
 
 local function switch_session()
@@ -374,7 +484,6 @@ local function switch_session()
         log("Session changed — waiting for manual resume")
     end
 
-    -- Save state on every session transition
     save_state()
 end
 
@@ -382,6 +491,9 @@ end
 -- Timer
 ------------------------------------------------------------------------
 local function timer_tick()
+    -- Process any pending scene switch (deferred from session transition)
+    process_pending_scene_switch()
+
     if not is_running or is_paused then return end
 
     if show_transition then
@@ -392,13 +504,16 @@ local function timer_tick()
     else
         if current_time > 0 then
             current_time = current_time - 1
+            -- Track total focus time
+            if session_type == "Focus" then
+                total_focus_seconds = total_focus_seconds + 1
+            end
         else
             switch_session()
         end
     end
     update_display_texts()
 
-    -- Auto-save every N seconds for crash resilience
     autosave_counter = autosave_counter + 1
     if autosave_counter >= autosave_interval then
         autosave_counter = 0
@@ -421,6 +536,7 @@ local function start_timer()
     end
     update_display_texts()
     update_background_media()
+    update_mic_state()
     save_state()
 end
 
@@ -450,6 +566,7 @@ end
 local function reset_timer()
     stop_timer()
     completed_focus_sessions = 0
+    total_focus_seconds = 0
     log("Timer reset — all progress cleared")
     update_display_texts()
     delete_state_file()
@@ -496,7 +613,35 @@ local function on_hotkey_skip(pressed)
 end
 
 ------------------------------------------------------------------------
--- Source Enumeration Helper
+-- Frontend Event Callback (stream/recording awareness)
+------------------------------------------------------------------------
+local function on_frontend_event(event)
+    if event == obs.OBS_FRONTEND_EVENT_STREAMING_STARTED then
+        log("Stream started")
+        if auto_start_on_stream and not is_running then
+            start_timer()
+        end
+
+    elseif event == obs.OBS_FRONTEND_EVENT_STREAMING_STOPPED then
+        log("Stream stopped")
+        if auto_stop_on_stream_end and is_running then
+            show_session_summary()
+            stop_timer()
+        elseif is_running then
+            show_session_summary()
+        end
+
+    elseif event == obs.OBS_FRONTEND_EVENT_RECORDING_STARTED then
+        log("Recording started")
+        -- Add initial chapter marker at recording start
+        if enable_chapter_markers and is_running then
+            add_chapter_marker()
+        end
+    end
+end
+
+------------------------------------------------------------------------
+-- Source / Scene Enumeration Helpers
 ------------------------------------------------------------------------
 local function populate_source_list(prop)
     obs.obs_property_list_clear(prop)
@@ -511,12 +656,23 @@ local function populate_source_list(prop)
     end
 end
 
+local function populate_scene_list(prop)
+    obs.obs_property_list_clear(prop)
+    obs.obs_property_list_add_string(prop, "(None)", "")
+    local scene_names = obs.obs_frontend_get_scene_names()
+    if scene_names then
+        for _, name in ipairs(scene_names) do
+            obs.obs_property_list_add_string(prop, name, name)
+        end
+    end
+end
+
 ------------------------------------------------------------------------
 -- OBS Script Interface
 ------------------------------------------------------------------------
 function script_description()
     return "Session Timer v" .. VERSION ..
-        " — Focus/Break sessions with alerts, backgrounds, and progress tracking."
+        " — Timer with scene switching, chapter markers, mic control, and alerts."
 end
 
 function script_properties()
@@ -529,7 +685,6 @@ function script_properties()
     obs.obs_properties_add_button(props, "skip_button", "⏭  Skip Session", skip_session)
     obs.obs_properties_add_button(props, "reset_button", "↺  Reset All", reset_timer)
 
-    -- ── Resume ──
     if has_pending_resume then
         obs.obs_properties_add_button(props, "resume_button",
             "⏪  Resume Previous Session", resume_previous_session)
@@ -547,9 +702,37 @@ function script_properties()
     obs.obs_properties_add_bool(props, "show_progress_bar", "Show Progress Bar")
     obs.obs_properties_add_int(props, "transition_display_time", "Transition Message Duration (sec)", 1, 10, 1)
 
-    -- ── OBS Sources (dropdowns) ──
+    -- ── Stream Integration ──
+    obs.obs_properties_add_bool(props, "auto_start_on_stream", "Auto-start Timer on Stream Start")
+    obs.obs_properties_add_bool(props, "auto_stop_on_stream_end", "Auto-stop Timer on Stream End")
+    obs.obs_properties_add_bool(props, "enable_chapter_markers", "Add Recording Chapter Markers")
+
+    -- ── Scene Switching ──
+    obs.obs_properties_add_bool(props, "enable_scene_switching", "Enable Scene Switching")
+
     local p
 
+    p = obs.obs_properties_add_list(props, "focus_scene",
+        "Focus Scene", obs.OBS_COMBO_TYPE_LIST, obs.OBS_COMBO_FORMAT_STRING)
+    populate_scene_list(p)
+
+    p = obs.obs_properties_add_list(props, "short_break_scene",
+        "Short Break Scene", obs.OBS_COMBO_TYPE_LIST, obs.OBS_COMBO_FORMAT_STRING)
+    populate_scene_list(p)
+
+    p = obs.obs_properties_add_list(props, "long_break_scene",
+        "Long Break Scene", obs.OBS_COMBO_TYPE_LIST, obs.OBS_COMBO_FORMAT_STRING)
+    populate_scene_list(p)
+
+    -- ── Mic Control ──
+    obs.obs_properties_add_bool(props, "enable_mic_control", "Enable Mic Control")
+    obs.obs_properties_add_bool(props, "mute_mic_during_focus", "Mute Mic During Focus (unmute on break)")
+
+    p = obs.obs_properties_add_list(props, "mic_source_name",
+        "Mic Source", obs.OBS_COMBO_TYPE_LIST, obs.OBS_COMBO_FORMAT_STRING)
+    populate_source_list(p)
+
+    -- ── Text Sources (dropdowns) ──
     p = obs.obs_properties_add_list(props, "time_source",
         "Timer Text Source", obs.OBS_COMBO_TYPE_LIST, obs.OBS_COMBO_FORMAT_STRING)
     populate_source_list(p)
@@ -582,7 +765,7 @@ function script_properties()
     obs.obs_properties_add_path(props, "long_break_alert_sound_path",
         "Long Break Alert Sound", obs.OBS_PATH_FILE, "Audio (*.mp3 *.ogg *.wav)", nil)
 
-    -- ── Background Media (images or videos) ──
+    -- ── Background Media ──
     obs.obs_properties_add_path(props, "focus_background_media",
         "Focus Background", obs.OBS_PATH_FILE,
         "Media (*.png *.jpg *.jpeg *.bmp *.gif *.mp4 *.webm *.mov *.mkv)", nil)
@@ -619,6 +802,8 @@ function script_defaults(settings)
     obs.obs_data_set_default_int(settings, "transition_display_time", 2)
     obs.obs_data_set_default_bool(settings, "show_progress_bar", true)
     obs.obs_data_set_default_bool(settings, "auto_start_next", true)
+    obs.obs_data_set_default_bool(settings, "enable_chapter_markers", true)
+    obs.obs_data_set_default_bool(settings, "mute_mic_during_focus", true)
 
     obs.obs_data_set_default_string(settings, "focus_message", "Focus Time")
     obs.obs_data_set_default_string(settings, "short_break_message", "Short Break")
@@ -629,7 +814,7 @@ function script_defaults(settings)
 end
 
 function script_update(settings)
-    -- Durations (UI shows minutes, internal uses seconds)
+    -- Durations
     focus_duration = obs.obs_data_get_int(settings, "focus_duration") * 60
     short_break_duration = obs.obs_data_get_int(settings, "short_break_duration") * 60
     long_break_duration = obs.obs_data_get_int(settings, "long_break_duration") * 60
@@ -638,6 +823,22 @@ function script_update(settings)
     transition_display_time = obs.obs_data_get_int(settings, "transition_display_time")
     show_progress_bar = obs.obs_data_get_bool(settings, "show_progress_bar")
     auto_start_next = obs.obs_data_get_bool(settings, "auto_start_next")
+
+    -- Stream integration
+    auto_start_on_stream = obs.obs_data_get_bool(settings, "auto_start_on_stream")
+    auto_stop_on_stream_end = obs.obs_data_get_bool(settings, "auto_stop_on_stream_end")
+    enable_chapter_markers = obs.obs_data_get_bool(settings, "enable_chapter_markers")
+
+    -- Scene switching
+    enable_scene_switching = obs.obs_data_get_bool(settings, "enable_scene_switching")
+    focus_scene = obs.obs_data_get_string(settings, "focus_scene")
+    short_break_scene = obs.obs_data_get_string(settings, "short_break_scene")
+    long_break_scene = obs.obs_data_get_string(settings, "long_break_scene")
+
+    -- Mic control
+    enable_mic_control = obs.obs_data_get_bool(settings, "enable_mic_control")
+    mute_mic_during_focus = obs.obs_data_get_bool(settings, "mute_mic_during_focus")
+    mic_source_name = obs.obs_data_get_string(settings, "mic_source_name")
 
     -- Sources
     focus_count_source = obs.obs_data_get_string(settings, "focus_count_source")
@@ -696,6 +897,9 @@ function script_load(settings)
     load_hotkey(hotkey_stop, "pomodoro_hotkey_stop")
     load_hotkey(hotkey_skip, "pomodoro_hotkey_skip")
 
+    -- Register frontend event callback for stream/recording awareness
+    obs.obs_frontend_add_event_callback(on_frontend_event)
+
     -- Check for saved session state
     local saved_state = load_state()
     if saved_state and saved_state.is_running then
@@ -718,19 +922,18 @@ function script_save(settings)
     save_hotkey(hotkey_stop, "pomodoro_hotkey_stop")
     save_hotkey(hotkey_skip, "pomodoro_hotkey_skip")
 
-    -- Persist timer state on OBS save
     if is_running then
         save_state()
     end
 end
 
 function script_unload()
-    -- Save state before unloading if timer was active
     if is_running then
         save_state()
         log("State saved for resume")
     end
 
+    obs.obs_frontend_remove_event_callback(on_frontend_event)
     obs.timer_remove(timer_tick)
     obs.obs_hotkey_unregister(hotkey_start_pause)
     obs.obs_hotkey_unregister(hotkey_stop)
