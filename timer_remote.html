@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Session Timer — Remote</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0f1019;
+    --surface: #1a1b2e;
+    --surface-hover: #22243a;
+    --surface-active: #2d2e45;
+    --border: rgba(255,255,255,0.06);
+    --text-primary: #e2e8f0;
+    --text-secondary: #94a3b8;
+    --text-muted: #64748b;
+    --focus: #22c55e;
+    --short-break: #3b82f6;
+    --long-break: #a855f7;
+    --stopwatch: #f59e0b;
+    --countdown: #f97316;
+    --overtime: #ef4444;
+    --idle: #475569;
+    --accent: #6366f1;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text-primary);
+    font-family: 'Inter', -apple-system, sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 24px;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+  }
+
+  .connection-bar {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    padding: 8px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    z-index: 10;
+  }
+  .connection-bar .title {
+    font-size: 0.65rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--text-muted);
+  }
+  .connection-status {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.6rem;
+    color: var(--text-muted);
+  }
+  .conn-dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--overtime);
+    transition: background 0.3s;
+  }
+  .conn-dot.connected { background: var(--focus); }
+  .conn-dot.connecting { background: var(--stopwatch); animation: blink 1s infinite; }
+
+  @keyframes blink {
+    0%,100% { opacity: 1; } 50% { opacity: 0.3; }
+  }
+
+  .timer-display {
+    text-align: center;
+    padding: 20px 0 30px;
+  }
+
+  .session-badge {
+    display: inline-block;
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    padding: 4px 14px;
+    border-radius: 99px;
+    margin-bottom: 12px;
+    transition: all 0.3s;
+  }
+  .session-badge.focus { background: rgba(34,197,94,0.15); color: var(--focus); }
+  .session-badge.short-break { background: rgba(59,130,246,0.15); color: var(--short-break); }
+  .session-badge.long-break { background: rgba(168,85,247,0.15); color: var(--long-break); }
+  .session-badge.idle { background: rgba(71,85,105,0.2); color: var(--text-muted); }
+  .session-badge.stopwatch { background: rgba(245,158,11,0.15); color: var(--stopwatch); }
+  .session-badge.countdown { background: rgba(249,115,22,0.15); color: var(--countdown); }
+  .session-badge.custom { background: rgba(34,197,94,0.15); color: var(--focus); }
+  .session-badge.overtime { background: rgba(239,68,68,0.15); color: var(--overtime); }
+
+  .time-big {
+    font-size: 4.5rem;
+    font-weight: 700;
+    letter-spacing: -3px;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+    transition: color 0.3s;
+  }
+  .time-big.idle { color: var(--idle); }
+  .time-big.overtime { color: var(--overtime); }
+
+  .sub-info {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    margin-top: 8px;
+  }
+
+  /* Main Control Buttons */
+  .main-controls {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    margin-bottom: 16px;
+  }
+
+  .big-btn {
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    border: 2px solid var(--border);
+    background: var(--surface);
+    color: var(--text-primary);
+    font-size: 1.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.15s;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .big-btn:active { transform: scale(0.92); background: var(--surface-active); }
+  .big-btn:disabled { opacity: 0.3; cursor: not-allowed; transform: none !important; }
+
+  .big-btn.play {
+    width: 84px; height: 84px;
+    background: rgba(34,197,94,0.15);
+    border-color: rgba(34,197,94,0.3);
+    color: var(--focus);
+    font-size: 1.8rem;
+  }
+  .big-btn.play:active { background: rgba(34,197,94,0.3); }
+
+  .big-btn.stop {
+    background: rgba(239,68,68,0.1);
+    border-color: rgba(239,68,68,0.2);
+    color: var(--overtime);
+  }
+  .big-btn.stop:active { background: rgba(239,68,68,0.25); }
+
+  /* Secondary Controls */
+  .secondary-controls {
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+    margin-bottom: 20px;
+  }
+
+  .sec-btn {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    border-radius: 10px;
+    padding: 10px 18px;
+    font-size: 0.75rem;
+    font-family: inherit;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .sec-btn:active { background: var(--surface-active); transform: scale(0.95); }
+  .sec-btn:disabled { opacity: 0.3; cursor: not-allowed; transform: none !important; }
+
+  /* Session Info */
+  .session-info {
+    display: flex;
+    justify-content: center;
+    gap: 24px;
+    padding: 12px 0;
+    border-top: 1px solid var(--border);
+  }
+  .info-item {
+    text-align: center;
+  }
+  .info-value {
+    font-size: 1.1rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+  .info-label {
+    font-size: 0.55rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-top: 2px;
+  }
+
+  /* Setup screen */
+  .setup-screen {
+    text-align: center;
+    padding: 40px 20px;
+  }
+  .setup-screen h2 {
+    font-size: 1.1rem;
+    margin-bottom: 16px;
+  }
+  .setup-screen p {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-bottom: 20px;
+    line-height: 1.6;
+  }
+  .setup-input {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text-primary);
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 0.8rem;
+    font-family: inherit;
+    width: 100%;
+    max-width: 280px;
+    margin-bottom: 8px;
+    outline: none;
+  }
+  .setup-input:focus { border-color: var(--accent); }
+  .setup-btn {
+    background: var(--accent);
+    border: none;
+    color: white;
+    border-radius: 8px;
+    padding: 10px 24px;
+    font-size: 0.8rem;
+    font-family: inherit;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 8px;
+  }
+  .setup-btn:active { opacity: 0.8; }
+</style>
+</head>
+<body>
+
+<!-- Connection Bar -->
+<div class="connection-bar">
+  <span class="title">Remote</span>
+  <div class="connection-status">
+    <span id="connLabel">Disconnected</span>
+    <div class="conn-dot" id="connDot"></div>
+  </div>
+</div>
+
+<!-- Main App (hidden until connected) -->
+<div id="mainApp" style="display:none">
+  <div class="timer-display">
+    <div class="session-badge idle" id="badge">Ready</div>
+    <div class="time-big idle" id="timeDisplay">--:--</div>
+    <div class="sub-info" id="subInfo"></div>
+  </div>
+
+  <div class="main-controls">
+    <button class="big-btn stop" id="btnStop" disabled>⏹</button>
+    <button class="big-btn play" id="btnPlay" disabled>▶</button>
+    <button class="big-btn" id="btnSkip" disabled>⏭</button>
+  </div>
+
+  <div class="secondary-controls">
+    <button class="sec-btn" id="btnMinus" disabled>− Time</button>
+    <button class="sec-btn" id="btnPlus" disabled>+ Time</button>
+  </div>
+
+  <div class="session-info">
+    <div class="info-item">
+      <div class="info-value" id="sessions">0/0</div>
+      <div class="info-label">Sessions</div>
+    </div>
+    <div class="info-item">
+      <div class="info-value" id="focusTime">0m</div>
+      <div class="info-label">Focus</div>
+    </div>
+    <div class="info-item">
+      <div class="info-value" id="progress">0%</div>
+      <div class="info-label">Progress</div>
+    </div>
+  </div>
+</div>
+
+<!-- Setup Screen (shown if no saved config) -->
+<div id="setupScreen" class="setup-screen">
+  <h2>🎮 Connect to OBS</h2>
+  <p>Enter your OBS WebSocket server details.<br>
+     Found in OBS → Tools → WebSocket Server Settings.</p>
+  <input class="setup-input" id="inputHost" type="text" placeholder="Host (e.g. 192.168.1.5)" value="127.0.0.1"><br>
+  <input class="setup-input" id="inputPort" type="text" placeholder="Port (default: 4455)" value="4455"><br>
+  <input class="setup-input" id="inputPassword" type="password" placeholder="Password (leave blank if none)"><br>
+  <button class="setup-btn" id="connectBtn">Connect</button>
+</div>
+
+<script type="module">
+import { OBSWebSocket } from 'https://cdn.jsdelivr.net/npm/obs-websocket-js@5.0.8/+esm';
+
+const obs = new OBSWebSocket();
+let connected = false;
+
+// DOM
+const mainApp = document.getElementById('mainApp');
+const setupScreen = document.getElementById('setupScreen');
+const connDot = document.getElementById('connDot');
+const connLabel = document.getElementById('connLabel');
+const badge = document.getElementById('badge');
+const timeDisplay = document.getElementById('timeDisplay');
+const subInfo = document.getElementById('subInfo');
+const sessionsEl = document.getElementById('sessions');
+const focusTimeEl = document.getElementById('focusTime');
+const progressEl = document.getElementById('progress');
+const btnPlay = document.getElementById('btnPlay');
+const btnStop = document.getElementById('btnStop');
+const btnSkip = document.getElementById('btnSkip');
+const btnPlus = document.getElementById('btnPlus');
+const btnMinus = document.getElementById('btnMinus');
+const connectBtn = document.getElementById('connectBtn');
+
+const BADGE_MAP = {
+  'Focus': 'focus', 'Short Break': 'short-break', 'Long Break': 'long-break',
+};
+
+// Check saved config
+const savedHost = localStorage.getItem('obs_remote_host');
+const savedPort = localStorage.getItem('obs_remote_port');
+const savedPass = localStorage.getItem('obs_remote_password');
+
+if (savedHost && savedPort) {
+  document.getElementById('inputHost').value = savedHost;
+  document.getElementById('inputPort').value = savedPort;
+  document.getElementById('inputPassword').value = savedPass || '';
+  attemptConnect(savedHost, savedPort, savedPass || '');
+}
+
+connectBtn.addEventListener('click', () => {
+  const host = document.getElementById('inputHost').value.trim() || '127.0.0.1';
+  const port = document.getElementById('inputPort').value.trim() || '4455';
+  const password = document.getElementById('inputPassword').value;
+  localStorage.setItem('obs_remote_host', host);
+  localStorage.setItem('obs_remote_port', port);
+  if (password) localStorage.setItem('obs_remote_password', password);
+  attemptConnect(host, port, password);
+});
+
+async function attemptConnect(host, port, password) {
+  setConnStatus('connecting');
+  try {
+    await obs.connect(`ws://${host}:${port}`, password || undefined);
+    setConnStatus('connected');
+    setupScreen.style.display = 'none';
+    mainApp.style.display = 'block';
+    enableButtons(true);
+    startPolling();
+  } catch (e) {
+    console.warn('Connection failed:', e.message);
+    setConnStatus('disconnected');
+    setupScreen.style.display = 'block';
+    mainApp.style.display = 'none';
+  }
+}
+
+obs.on('ConnectionClosed', () => {
+  setConnStatus('disconnected');
+  enableButtons(false);
+  // Try reconnecting
+  setTimeout(() => {
+    if (savedHost) attemptConnect(savedHost, savedPort || '4455', savedPass || '');
+  }, 5000);
+});
+
+function setConnStatus(status) {
+  connected = (status === 'connected');
+  connDot.className = 'conn-dot ' + status;
+  connLabel.textContent = status === 'connected' ? 'Connected'
+    : status === 'connecting' ? 'Connecting…' : 'Disconnected';
+}
+
+function enableButtons(enabled) {
+  [btnPlay, btnStop, btnSkip, btnPlus, btnMinus].forEach(b => b.disabled = !enabled);
+}
+
+// Hotkey triggers
+async function trigger(name) {
+  if (!connected) return;
+  try { await obs.call('TriggerHotkeyByName', { hotkeyName: name }); }
+  catch(e) { console.warn('Trigger failed:', name); }
+}
+
+btnPlay.addEventListener('click', () => trigger('pomodoro_start_pause'));
+btnStop.addEventListener('click', () => trigger('pomodoro_stop'));
+btnSkip.addEventListener('click', () => trigger('pomodoro_skip'));
+btnPlus.addEventListener('click', () => trigger('pomodoro_add_time'));
+btnMinus.addEventListener('click', () => trigger('pomodoro_sub_time'));
+
+// Formatting
+function fmt(s) {
+  if (s == null || s < 0) return '--:--';
+  const h = Math.floor(s/3600), m = Math.floor((s%3600)/60), sec = s%60;
+  if (h>0) return `${h}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
+  return `${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
+}
+function fmtDur(s) {
+  if (!s||s<=0) return '0m';
+  const m=Math.floor(s/60);
+  if(m<60) return m+'m';
+  const h=Math.floor(m/60), r=m%60;
+  return r===0?h+'h':`${h}h ${r}m`;
+}
+
+// State polling via JSON file read is not possible remotely.
+// Instead we poll state by reading the JSON on OBS's side — but that requires a custom source.
+// Simpler: we use a lightweight polling approach by checking hotkey results.
+// Actually the best approach for remote: we poll state by triggering a
+// "get state" — but OBS WebSocket doesn't have that for scripts.
+// So we use a hybrid: the remote shows controls, and for state display
+// we attempt to fetch the state file if accessible on the same network.
+
+let lastState = null;
+
+async function pollState() {
+  // Try direct HTTP fetch (works if user serves files via a local server)
+  // Otherwise show minimal UI with just controls
+  try {
+    const host = localStorage.getItem('obs_remote_host') || '127.0.0.1';
+    const resp = await fetch(`http://${host}:8080/pomodoro_state.json?t=${Date.now()}`);
+    if (resp.ok) {
+      lastState = await resp.json();
+      updateUI(lastState);
+      return;
+    }
+  } catch(e) { /* Expected if no HTTP server */ }
+
+  // Fallback: try same-origin fetch
+  try {
+    const resp = await fetch('pomodoro_state.json?t=' + Date.now());
+    if (resp.ok) {
+      lastState = await resp.json();
+      updateUI(lastState);
+      return;
+    }
+  } catch(e) {}
+
+  // No state available — show controls only
+  if (!lastState) {
+    subInfo.textContent = 'Controls active · state unavailable';
+  }
+}
+
+function updateUI(s) {
+  if (!s) return;
+
+  const { is_running, is_paused, session_type, current_time, total_time,
+          timer_mode, completed_focus_sessions, goal_sessions,
+          total_focus_seconds, is_overtime, overtime_seconds,
+          custom_segment_name, custom_segment_index, custom_segment_count,
+          chat_status_line } = s;
+
+  const mode = timer_mode || 'pomodoro';
+  const ot = is_overtime || false;
+
+  // Badge
+  let bText = session_type || 'Ready', bCls = BADGE_MAP[session_type] || 'idle';
+  if (ot) { bText += ' · OT'; bCls = 'overtime'; }
+  else if (mode==='stopwatch') { bText='Stopwatch'; bCls='stopwatch'; }
+  else if (mode==='countdown') { bText='Countdown'; bCls='countdown'; }
+  else if (mode==='custom' && custom_segment_name) { bText=custom_segment_name; bCls='custom'; }
+  if (is_paused && !ot) bText += ' · Paused';
+  if (!is_running) { bText='Ready'; bCls='idle'; }
+  badge.textContent = bText;
+  badge.className = 'session-badge ' + bCls;
+
+  // Time
+  if (ot) {
+    timeDisplay.textContent = '+' + fmt(overtime_seconds||0);
+    timeDisplay.className = 'time-big overtime';
+  } else {
+    timeDisplay.textContent = fmt(current_time);
+    timeDisplay.className = is_running ? 'time-big' : 'time-big idle';
+  }
+
+  // Play button label
+  btnPlay.textContent = is_running && !is_paused ? '⏸' : '▶';
+
+  // Sub info
+  if (chat_status_line && is_running) {
+    subInfo.textContent = chat_status_line;
+  } else {
+    subInfo.textContent = '';
+  }
+
+  // Stats
+  let progress = 0;
+  if (ot) { progress = 100; }
+  else if (mode==='stopwatch') { progress = ((current_time%3600)/3600)*100; }
+  else if (total_time>0) { progress = ((total_time-current_time)/total_time)*100; }
+
+  if (mode==='pomodoro') {
+    sessionsEl.textContent = `${completed_focus_sessions||0}/${goal_sessions||0}`;
+  } else if (mode==='custom') {
+    sessionsEl.textContent = `${custom_segment_index||1}/${custom_segment_count||0}`;
+  } else {
+    sessionsEl.textContent = '-';
+  }
+  focusTimeEl.textContent = fmtDur(total_focus_seconds);
+  progressEl.textContent = Math.round(progress) + '%';
+}
+
+function startPolling() {
+  pollState();
+  setInterval(pollState, 1000);
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Session Timer — Bar Overlay</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --focus: #22c55e;
+    --short-break: #3b82f6;
+    --long-break: #a855f7;
+    --stopwatch: #f59e0b;
+    --countdown: #f97316;
+    --overtime: #ef4444;
+    --idle: #475569;
+    --bar-bg: rgba(0, 0, 0, 0.55);
+    --bar-height: 36px;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: transparent;
+    font-family: 'Inter', -apple-system, sans-serif;
+    overflow: hidden;
+  }
+
+  .bar-container {
+    position: fixed;
+    width: 100%;
+    height: var(--bar-height);
+    background: var(--bar-bg);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    display: flex;
+    align-items: center;
+    padding: 0 14px;
+    gap: 10px;
+    border-radius: 0;
+    opacity: 0;
+    transform: translateY(-100%);
+    transition: opacity 0.4s ease, transform 0.4s ease;
+  }
+  .bar-container.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  /* Position variants via URL param */
+  .bar-container.top { top: 0; }
+  .bar-container.bottom { top: auto; bottom: 0; transform: translateY(100%); }
+  .bar-container.bottom.visible { transform: translateY(0); }
+
+  .session-icon {
+    font-size: 0.75rem;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: background 0.3s;
+  }
+  .session-icon.focus { background: rgba(34, 197, 94, 0.2); }
+  .session-icon.short-break { background: rgba(59, 130, 246, 0.2); }
+  .session-icon.long-break { background: rgba(168, 85, 247, 0.2); }
+  .session-icon.stopwatch { background: rgba(245, 158, 11, 0.2); }
+  .session-icon.countdown { background: rgba(249, 115, 22, 0.2); }
+  .session-icon.overtime { background: rgba(239, 68, 68, 0.2); }
+
+  .session-label {
+    font-size: 0.6rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    color: rgba(255, 255, 255, 0.7);
+    white-space: nowrap;
+    min-width: 50px;
+  }
+
+  .time-text {
+    font-size: 1rem;
+    font-weight: 700;
+    color: #fff;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.5px;
+    white-space: nowrap;
+  }
+  .time-text.overtime { color: var(--overtime); }
+
+  .progress-track {
+    flex: 1;
+    height: 4px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 99px;
+    overflow: hidden;
+    min-width: 40px;
+  }
+
+  .progress-fill {
+    height: 100%;
+    border-radius: 99px;
+    width: 0%;
+    transition: width 0.8s ease, background 0.3s;
+  }
+  .progress-fill.focus { background: var(--focus); }
+  .progress-fill.short-break { background: var(--short-break); }
+  .progress-fill.long-break { background: var(--long-break); }
+  .progress-fill.stopwatch { background: var(--stopwatch); }
+  .progress-fill.countdown { background: var(--countdown); }
+  .progress-fill.overtime { background: var(--overtime); }
+
+  .session-counter {
+    font-size: 0.55rem;
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.45);
+    white-space: nowrap;
+    letter-spacing: 0.5px;
+  }
+
+  .paused-indicator {
+    font-size: 0.5rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: #eab308;
+    animation: pulse 1.5s infinite;
+    white-space: nowrap;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  .transition-text {
+    font-size: 0.65rem;
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.8);
+    white-space: nowrap;
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+  .transition-text.visible { opacity: 1; }
+</style>
+</head>
+<body>
+
+<div class="bar-container top" id="bar">
+  <div class="session-icon" id="sessionIcon">📚</div>
+  <div class="session-label" id="sessionLabel">READY</div>
+  <div class="time-text" id="timeText">--:--</div>
+  <div class="progress-track">
+    <div class="progress-fill" id="progressFill"></div>
+  </div>
+  <div class="session-counter" id="sessionCounter"></div>
+  <div class="paused-indicator" id="pausedBadge" style="display:none">PAUSED</div>
+  <div class="transition-text" id="transitionText"></div>
+</div>
+
+<script>
+const POLL_INTERVAL = 500;
+const params = new URLSearchParams(window.location.search);
+const position = params.get('position') || 'top';
+
+const bar = document.getElementById('bar');
+const sessionIcon = document.getElementById('sessionIcon');
+const sessionLabel = document.getElementById('sessionLabel');
+const timeText = document.getElementById('timeText');
+const progressFill = document.getElementById('progressFill');
+const sessionCounter = document.getElementById('sessionCounter');
+const pausedBadge = document.getElementById('pausedBadge');
+const transitionText = document.getElementById('transitionText');
+
+// Apply position
+bar.classList.remove('top', 'bottom');
+bar.classList.add(position);
+
+const ICONS = {
+  'Focus': '📚', 'Short Break': '☕', 'Long Break': '🧘',
+  'Stopwatch': '⏱️', 'Countdown': '⏳',
+};
+
+const CLASSES = {
+  'Focus': 'focus', 'Short Break': 'short-break', 'Long Break': 'long-break',
+};
+
+function formatTime(seconds) {
+  if (seconds == null || seconds < 0) return '--:--';
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  if (h > 0) return `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+  return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+}
+
+function update(state) {
+  if (!state || !state.is_running) {
+    bar.classList.remove('visible');
+    return;
+  }
+
+  bar.classList.add('visible');
+
+  const { session_type, current_time, total_time, is_paused, timer_mode,
+          completed_focus_sessions, goal_sessions, custom_segment_name,
+          custom_segment_index, custom_segment_count, is_overtime,
+          overtime_seconds, show_transition, transition_message } = state;
+
+  const mode = timer_mode || 'pomodoro';
+  const overtime = is_overtime || false;
+
+  // Session icon & label
+  let label = session_type || 'Timer';
+  let iconText = ICONS[session_type] || '⏱️';
+  let colorCls = CLASSES[session_type] || 'focus';
+
+  if (mode === 'stopwatch') {
+    label = 'Stopwatch'; iconText = '⏱️'; colorCls = 'stopwatch';
+  } else if (mode === 'countdown') {
+    label = 'Countdown'; iconText = '⏳'; colorCls = 'countdown';
+  } else if (mode === 'custom' && custom_segment_name) {
+    label = custom_segment_name; iconText = '📋';
+  }
+
+  if (overtime) {
+    colorCls = 'overtime';
+    iconText = '🔥';
+    label += ' OT';
+  }
+
+  sessionIcon.textContent = iconText;
+  sessionIcon.className = 'session-icon ' + colorCls;
+  sessionLabel.textContent = label.toUpperCase();
+
+  // Time
+  if (overtime) {
+    timeText.textContent = '+' + formatTime(overtime_seconds || 0);
+    timeText.className = 'time-text overtime';
+  } else {
+    timeText.textContent = formatTime(current_time);
+    timeText.className = 'time-text';
+  }
+
+  // Progress
+  let progress = 0;
+  if (overtime) {
+    progress = 100;
+  } else if (mode === 'stopwatch') {
+    progress = ((current_time % 3600) / 3600) * 100;
+  } else if (total_time > 0) {
+    progress = ((total_time - current_time) / total_time) * 100;
+  }
+  progressFill.style.width = progress + '%';
+  progressFill.className = 'progress-fill ' + colorCls;
+
+  // Counter
+  if (mode === 'pomodoro') {
+    sessionCounter.textContent = `${completed_focus_sessions || 0}/${goal_sessions || 0}`;
+  } else if (mode === 'custom') {
+    sessionCounter.textContent = `${custom_segment_index || 1}/${custom_segment_count || 0}`;
+  } else {
+    sessionCounter.textContent = '';
+  }
+
+  // Paused
+  pausedBadge.style.display = is_paused ? 'block' : 'none';
+
+  // Transition
+  if (show_transition && transition_message) {
+    transitionText.textContent = transition_message;
+    transitionText.classList.add('visible');
+  } else {
+    transitionText.classList.remove('visible');
+  }
+}
+
+let lastState = null;
+
+async function poll() {
+  try {
+    const resp = await fetch('pomodoro_state.json?t=' + Date.now());
+    if (resp.ok) {
+      lastState = await resp.json();
+      update(lastState);
+    } else {
+      update(null);
+    }
+  } catch (e) {
+    update(lastState);
+  }
+}
+
+poll();
+setInterval(poll, POLL_INTERVAL);
+</script>
+</body>
+</html>

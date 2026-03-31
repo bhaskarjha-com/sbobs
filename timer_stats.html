@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Session Timer — Productivity Stats</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0f1019;
+    --surface: #1a1b2e;
+    --surface-hover: #22243a;
+    --border: rgba(255,255,255,0.06);
+    --text-primary: #e2e8f0;
+    --text-secondary: #94a3b8;
+    --text-muted: #64748b;
+    --focus: #22c55e;
+    --short-break: #3b82f6;
+    --long-break: #a855f7;
+    --accent: #6366f1;
+    --danger: #ef4444;
+    --chart-height: 120px;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text-primary);
+    font-family: 'Inter', -apple-system, sans-serif;
+    padding: 20px;
+    min-height: 100vh;
+  }
+
+  .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 24px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .header h1 {
+    font-size: 1.1rem;
+    font-weight: 700;
+    letter-spacing: -0.3px;
+  }
+  .header h1 span { color: var(--accent); }
+
+  .header-meta {
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  .summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 10px;
+    margin-bottom: 24px;
+  }
+
+  .summary-card {
+    background: var(--surface);
+    border-radius: 10px;
+    padding: 14px 16px;
+    position: relative;
+    overflow: hidden;
+  }
+  .summary-card::after {
+    content: '';
+    position: absolute;
+    top: 0; left: 0;
+    width: 3px; height: 100%;
+    border-radius: 10px 0 0 10px;
+  }
+  .summary-card.focus::after { background: var(--focus); }
+  .summary-card.sessions::after { background: var(--accent); }
+  .summary-card.streak::after { background: #f59e0b; }
+  .summary-card.avg::after { background: var(--long-break); }
+
+  .summary-value {
+    font-size: 1.6rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+  .summary-label {
+    font-size: 0.6rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-top: 2px;
+  }
+  .summary-sub {
+    font-size: 0.55rem;
+    color: var(--text-muted);
+    margin-top: 4px;
+  }
+
+  .section-title {
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--text-muted);
+    margin-bottom: 10px;
+    margin-top: 20px;
+  }
+
+  /* 7-Day Chart */
+  .chart-container {
+    background: var(--surface);
+    border-radius: 10px;
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+
+  .bar-chart {
+    display: flex;
+    align-items: flex-end;
+    gap: 6px;
+    height: var(--chart-height);
+    padding-top: 8px;
+  }
+
+  .bar-day {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    height: 100%;
+    justify-content: flex-end;
+  }
+
+  .bar-fill {
+    width: 100%;
+    min-height: 2px;
+    border-radius: 4px 4px 2px 2px;
+    background: var(--accent);
+    transition: height 0.5s ease;
+    position: relative;
+  }
+  .bar-fill.today { background: var(--focus); }
+
+  .bar-value {
+    font-size: 0.5rem;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .bar-label {
+    font-size: 0.5rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-weight: 500;
+  }
+  .bar-label.today { color: var(--focus); font-weight: 700; }
+
+  /* Session Log Table */
+  .log-container {
+    background: var(--surface);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+
+  .log-table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  .log-table th {
+    font-size: 0.55rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-muted);
+    padding: 10px 12px;
+    text-align: left;
+    background: rgba(255,255,255,0.02);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .log-table td {
+    font-size: 0.7rem;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .log-table tr:last-child td { border-bottom: none; }
+  .log-table tr:hover td { background: var(--surface-hover); }
+
+  .type-badge {
+    display: inline-block;
+    font-size: 0.5rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 2px 6px;
+    border-radius: 4px;
+  }
+  .type-badge.Focus { background: rgba(34,197,94,0.15); color: var(--focus); }
+  .type-badge.Short { background: rgba(59,130,246,0.15); color: var(--short-break); }
+  .type-badge.Long { background: rgba(168,85,247,0.15); color: var(--long-break); }
+  .type-badge.other { background: rgba(99,102,241,0.15); color: var(--accent); }
+
+  .completed-yes { color: var(--focus); }
+  .completed-no { color: var(--danger); }
+
+  .empty-state {
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--text-muted);
+  }
+  .empty-state .icon { font-size: 2rem; margin-bottom: 8px; }
+  .empty-state .msg { font-size: 0.75rem; }
+  .empty-state .sub { font-size: 0.6rem; margin-top: 4px; }
+
+  .footer {
+    margin-top: 20px;
+    text-align: center;
+    font-size: 0.55rem;
+    color: var(--text-muted);
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>📊 Productivity <span>Stats</span></h1>
+  <div class="header-meta" id="headerMeta">Loading...</div>
+</div>
+
+<div class="summary-grid" id="summaryGrid">
+  <div class="summary-card focus">
+    <div class="summary-value" id="todayFocus">0h</div>
+    <div class="summary-label">Focus Today</div>
+    <div class="summary-sub" id="todaySessions">0 sessions</div>
+  </div>
+  <div class="summary-card sessions">
+    <div class="summary-value" id="totalSessions">0</div>
+    <div class="summary-label">Total Sessions</div>
+    <div class="summary-sub" id="totalFocus">0h total focus</div>
+  </div>
+  <div class="summary-card streak">
+    <div class="summary-value" id="streak">0</div>
+    <div class="summary-label">Day Streak</div>
+    <div class="summary-sub" id="bestDay">Best: --</div>
+  </div>
+  <div class="summary-card avg">
+    <div class="summary-value" id="avgSession">0m</div>
+    <div class="summary-label">Avg Session</div>
+    <div class="summary-sub" id="completionRate">0% completion</div>
+  </div>
+</div>
+
+<div class="section-title">Last 7 Days</div>
+<div class="chart-container">
+  <div class="bar-chart" id="barChart"></div>
+</div>
+
+<div class="section-title">Recent Sessions</div>
+<div class="log-container" id="logContainer">
+  <div class="empty-state" id="emptyState">
+    <div class="icon">📋</div>
+    <div class="msg">No sessions logged yet</div>
+    <div class="sub">Enable "Log Sessions to CSV" in script settings</div>
+  </div>
+</div>
+
+<div class="footer">
+  Session Timer Stats · Data from session_history.csv
+</div>
+
+<script>
+const DAY_NAMES = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+function formatDuration(seconds) {
+  if (!seconds || seconds <= 0) return '0m';
+  const mins = Math.floor(seconds / 60);
+  if (mins < 60) return `${mins}m`;
+  const h = Math.floor(mins / 60);
+  const rm = mins % 60;
+  return rm === 0 ? `${h}h` : `${h}h ${rm}m`;
+}
+
+function parseCsv(text) {
+  const lines = text.trim().split('\n');
+  if (lines.length < 2) return [];
+  const headers = lines[0].split(',');
+  return lines.slice(1).map(line => {
+    const cols = line.split(',');
+    const row = {};
+    headers.forEach((h, i) => row[h.trim()] = (cols[i] || '').trim());
+    return row;
+  }).filter(r => r.date);
+}
+
+function getDateStr(d) {
+  return d.toISOString().split('T')[0];
+}
+
+function computeStats(rows) {
+  const today = getDateStr(new Date());
+  const stats = {
+    todayFocusSeconds: 0,
+    todaySessions: 0,
+    totalSessions: rows.length,
+    totalFocusSeconds: 0,
+    totalCompletedSeconds: 0,
+    totalCompleted: 0,
+    dayMap: {},
+    streak: 0,
+    bestDayLabel: '--',
+    bestDayMinutes: 0,
+  };
+
+  rows.forEach(r => {
+    const dur = parseInt(r.duration_seconds) || 0;
+    const completed = r.completed === 'true';
+    const date = r.date;
+    const type = r.session_type || '';
+
+    if (type === 'Focus' || type.indexOf('Break') === -1) {
+      stats.totalFocusSeconds += dur;
+      if (date === today) {
+        stats.todayFocusSeconds += dur;
+        stats.todaySessions++;
+      }
+    }
+
+    if (completed) {
+      stats.totalCompleted++;
+      stats.totalCompletedSeconds += dur;
+    }
+
+    if (!stats.dayMap[date]) stats.dayMap[date] = 0;
+    if (type === 'Focus' || type.indexOf('Break') === -1) {
+      stats.dayMap[date] += dur;
+    }
+  });
+
+  // Streak: consecutive days with at least 1 focus session
+  const sortedDays = Object.keys(stats.dayMap).sort().reverse();
+  let streak = 0;
+  const checkDate = new Date();
+  // If today has no sessions, start checking from yesterday
+  if (!stats.dayMap[getDateStr(checkDate)]) {
+    checkDate.setDate(checkDate.getDate() - 1);
+  }
+  for (let i = 0; i < 365; i++) {
+    const ds = getDateStr(checkDate);
+    if (stats.dayMap[ds] && stats.dayMap[ds] > 0) {
+      streak++;
+      checkDate.setDate(checkDate.getDate() - 1);
+    } else {
+      break;
+    }
+  }
+  stats.streak = streak;
+
+  // Best day
+  let bestDay = null, bestMin = 0;
+  Object.entries(stats.dayMap).forEach(([date, sec]) => {
+    const mins = Math.floor(sec / 60);
+    if (mins > bestMin) { bestMin = mins; bestDay = date; }
+  });
+  if (bestDay) {
+    stats.bestDayLabel = bestDay;
+    stats.bestDayMinutes = bestMin;
+  }
+
+  return stats;
+}
+
+function renderChart(dayMap) {
+  const chart = document.getElementById('barChart');
+  chart.innerHTML = '';
+  const days = [];
+  const now = new Date();
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(now);
+    d.setDate(d.getDate() - i);
+    const ds = getDateStr(d);
+    days.push({
+      date: ds,
+      day: DAY_NAMES[d.getDay()],
+      minutes: Math.floor((dayMap[ds] || 0) / 60),
+      isToday: i === 0,
+    });
+  }
+
+  const maxMin = Math.max(1, ...days.map(d => d.minutes));
+
+  days.forEach(d => {
+    const pct = (d.minutes / maxMin) * 100;
+    const col = document.createElement('div');
+    col.className = 'bar-day';
+
+    const val = document.createElement('div');
+    val.className = 'bar-value';
+    val.textContent = d.minutes > 0 ? `${d.minutes}m` : '';
+
+    const fill = document.createElement('div');
+    fill.className = 'bar-fill' + (d.isToday ? ' today' : '');
+    fill.style.height = Math.max(2, pct) + '%';
+
+    const label = document.createElement('div');
+    label.className = 'bar-label' + (d.isToday ? ' today' : '');
+    label.textContent = d.day;
+
+    col.appendChild(val);
+    col.appendChild(fill);
+    col.appendChild(label);
+    chart.appendChild(col);
+  });
+}
+
+function renderLog(rows) {
+  const container = document.getElementById('logContainer');
+  const emptyState = document.getElementById('emptyState');
+
+  if (rows.length === 0) {
+    emptyState.style.display = 'block';
+    return;
+  }
+  emptyState.style.display = 'none';
+
+  // Show most recent 30 sessions
+  const recent = rows.slice(-30).reverse();
+
+  const table = document.createElement('table');
+  table.className = 'log-table';
+  table.innerHTML = `
+    <thead>
+      <tr>
+        <th>Date</th>
+        <th>Time</th>
+        <th>Type</th>
+        <th>Duration</th>
+        <th>Done</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  `;
+
+  const tbody = table.querySelector('tbody');
+  recent.forEach(r => {
+    const tr = document.createElement('tr');
+    const dur = parseInt(r.duration_seconds) || 0;
+    const completed = r.completed === 'true';
+    const typeClass = r.session_type === 'Focus' ? 'Focus'
+      : r.session_type?.includes('Short') ? 'Short'
+      : r.session_type?.includes('Long') ? 'Long'
+      : 'other';
+
+    tr.innerHTML = `
+      <td>${r.date || '--'}</td>
+      <td>${r.time || '--'}</td>
+      <td><span class="type-badge ${typeClass}">${r.session_type || '--'}</span></td>
+      <td>${formatDuration(dur)}</td>
+      <td class="${completed ? 'completed-yes' : 'completed-no'}">${completed ? '✓' : '✗'}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  container.appendChild(table);
+}
+
+function renderStats(stats) {
+  document.getElementById('todayFocus').textContent = formatDuration(stats.todayFocusSeconds);
+  document.getElementById('todaySessions').textContent = stats.todaySessions + ' sessions';
+  document.getElementById('totalSessions').textContent = stats.totalSessions;
+  document.getElementById('totalFocus').textContent = formatDuration(stats.totalFocusSeconds) + ' total';
+  document.getElementById('streak').textContent = stats.streak;
+
+  if (stats.bestDayMinutes > 0) {
+    document.getElementById('bestDay').textContent = 'Best: ' + formatDuration(stats.bestDayMinutes * 60);
+  }
+
+  const avgSec = stats.totalCompleted > 0
+    ? Math.floor(stats.totalCompletedSeconds / stats.totalCompleted) : 0;
+  document.getElementById('avgSession').textContent = formatDuration(avgSec);
+
+  const rate = stats.totalSessions > 0
+    ? Math.round((stats.totalCompleted / stats.totalSessions) * 100) : 0;
+  document.getElementById('completionRate').textContent = rate + '% completion';
+
+  document.getElementById('headerMeta').textContent =
+    `${stats.totalSessions} sessions · ${formatDuration(stats.totalFocusSeconds)} focused`;
+}
+
+async function loadData() {
+  try {
+    const resp = await fetch('session_history.csv?t=' + Date.now());
+    if (!resp.ok) {
+      document.getElementById('headerMeta').textContent = 'No data file found';
+      renderChart({});
+      return;
+    }
+    const text = await resp.text();
+    const rows = parseCsv(text);
+
+    if (rows.length === 0) {
+      document.getElementById('headerMeta').textContent = 'No sessions logged';
+      renderChart({});
+      return;
+    }
+
+    const stats = computeStats(rows);
+    renderStats(stats);
+    renderChart(stats.dayMap);
+    renderLog(rows);
+  } catch (e) {
+    document.getElementById('headerMeta').textContent = 'Error loading data';
+    console.error('[Stats]', e);
+    renderChart({});
+  }
+}
+
+loadData();
+// Auto-refresh every 30 seconds
+setInterval(loadData, 30000);
+</script>
+</body>
+</html>

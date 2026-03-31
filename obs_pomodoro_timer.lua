@@ -19,6 +19,15 @@ local VERSION = "5.0.0"
 
 ------------------------------------------------------------------------
 -- State
+--
+-- State Machine (valid combinations only):
+--   IDLE:          is_running=false, is_paused=false, is_overtime=false
+--   RUNNING:       is_running=true,  is_paused=false, is_overtime=false
+--   PAUSED:        is_running=true,  is_paused=true,  is_overtime=false
+--   OVERTIME:      is_running=true,  is_paused=false, is_overtime=true
+--   TRANSITIONING: is_running=true,  show_transition=true
+--
+-- All other boolean combinations are invalid.
 ------------------------------------------------------------------------
 local current_time = 0
 local cycle_count = 0
@@ -719,11 +728,19 @@ local function update_source_visibility()
     if not hide_during_focus_source or hide_during_focus_source == "" then return end
 
     local should_show = (session_type ~= "Focus")
-    local source = obs.obs_get_source_by_name(hide_during_focus_source)
-    if source then
-        obs.obs_source_set_enabled(source, should_show)
-        obs.obs_source_release(source)
-        log("Source '" .. hide_during_focus_source .. "' " .. (should_show and "shown" or "hidden"))
+
+    -- Support comma-separated source names
+    for name in hide_during_focus_source:gmatch("[^,]+") do
+        name = name:match("^%s*(.-)%s*$")  -- trim whitespace
+        if name ~= "" then
+            local source = obs.obs_get_source_by_name(name)
+            if source then
+                obs.obs_source_set_enabled(source, should_show)
+                obs.obs_source_release(source)
+            else
+                log("Warning: source '" .. name .. "' not found for visibility toggle")
+            end
+        end
     end
 end
 
@@ -1565,9 +1582,8 @@ function script_properties()
         obs.OBS_GROUP_CHECKABLE, mic_group)
 
     -- ── Source Visibility ──
-    p = obs.obs_properties_add_list(props, "hide_during_focus_source",
-        "Hide During Focus (e.g. webcam)", obs.OBS_COMBO_TYPE_LIST, obs.OBS_COMBO_FORMAT_STRING)
-    populate_source_list(p)
+    obs.obs_properties_add_text(props, "hide_during_focus_source",
+        "Hide During Focus (source names, comma-sep)", obs.OBS_TEXT_DEFAULT)
 
     -- ── Volume Ducking (group) ──
     local vol_group = obs.obs_properties_create()
