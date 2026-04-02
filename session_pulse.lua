@@ -1835,7 +1835,10 @@ local function quick_setup(props, p)
         log("Quick Setup: ✓ All items already exist. Sources added to scenes.")
     end
 
-    -- Refresh the properties UI to reflect new settings
+    -- Force the properties UI to re-read our modified settings.
+    -- Without this, dropdowns inside checkable groups won't update.
+    obs.obs_properties_apply_settings(props, quick_setup_settings)
+
     return true
 end
 
