@@ -1639,79 +1639,22 @@ local function get_text_source_id()
     end
 end
 
-local function source_exists(name)
+local function get_or_create_source(name, source_id, settings)
+    -- Try to find existing source first
     local source = obs.obs_get_source_by_name(name)
     if source then
-        obs.obs_source_release(source)
-        return true
+        return source, false  -- source, was_created
     end
-    return false
-end
-
-local function create_text_source(name, initial_text, font_size)
-    if source_exists(name) then
-        log("Quick Setup: '" .. name .. "' already exists, skipping")
-        return false
-    end
-
-    local text_id = get_text_source_id()
-    local settings = obs.obs_data_create()
-    obs.obs_data_set_string(settings, "text", initial_text)
-
-    -- Font settings
-    local font = obs.obs_data_create()
-    obs.obs_data_set_string(font, "face", "Arial")
-    obs.obs_data_set_int(font, "size", font_size or 48)
-    obs.obs_data_set_int(font, "flags", 0)
-    obs.obs_data_set_obj(settings, "font", font)
-    obs.obs_data_release(font)
-
-    -- White text
-    obs.obs_data_set_int(settings, "color", 0xFFFFFF)
-
-    local source = obs.obs_source_create(text_id, name, settings, nil)
-    obs.obs_data_release(settings)
-
+    -- Create new source
+    source = obs.obs_source_create(source_id, name, settings, nil)
     if source then
-        obs.obs_source_release(source)
-        log("Quick Setup: Created '" .. name .. "'")
-        return true
-    else
-        log("Quick Setup: Failed to create '" .. name .. "'")
-        return false
+        return source, true
     end
+    return nil, false
 end
 
-local function create_browser_source(name, file_path, width, height)
-    if source_exists(name) then
-        log("Quick Setup: '" .. name .. "' already exists, skipping")
-        return false
-    end
-
-    local settings = obs.obs_data_create()
-    obs.obs_data_set_bool(settings, "is_local_file", true)
-    obs.obs_data_set_string(settings, "local_file", file_path)
-    obs.obs_data_set_int(settings, "width", width)
-    obs.obs_data_set_int(settings, "height", height)
-    obs.obs_data_set_bool(settings, "shutdown", false)
-
-    local source = obs.obs_source_create("browser_source", name, settings, nil)
-    obs.obs_data_release(settings)
-
-    if source then
-        obs.obs_source_release(source)
-        log("Quick Setup: Created '" .. name .. "'")
-        return true
-    else
-        log("Quick Setup: Failed to create '" .. name .. "'")
-        return false
-    end
-end
-
-local function add_source_to_scene(scene, source_name, x, y)
-    local source = obs.obs_get_source_by_name(source_name)
-    if not source then return end
-
+local function add_source_obj_to_scene(scene, source, x, y)
+    if not scene or not source then return end
     local item = obs.obs_scene_add(scene, source)
     if item then
         local pos = obs.vec2()
@@ -1719,7 +1662,38 @@ local function add_source_to_scene(scene, source_name, x, y)
         pos.y = y
         obs.obs_sceneitem_set_pos(item, pos)
     end
-    obs.obs_source_release(source)
+end
+
+local function get_or_create_scene(name)
+    -- Check if scene already exists
+    local scene_source = obs.obs_get_source_by_name(name)
+    if scene_source then
+        local scene = obs.obs_scene_from_source(scene_source)
+        obs.obs_source_release(scene_source)
+        return scene, false  -- scene, was_created
+    end
+    -- Create new scene
+    local scene = obs.obs_scene_create(name)
+    return scene, true
+end
+
+local function populate_scene(scene, source_list, overlay_source)
+    -- Add text sources
+    local positions = {
+        { source = source_list[1], x = 700, y = 300 },  -- Session
+        { source = source_list[2], x = 700, y = 350 },  -- Timer
+        { source = source_list[3], x = 700, y = 450 },  -- Count
+        { source = source_list[4], x = 700, y = 490 },  -- Progress
+    }
+    for _, p in ipairs(positions) do
+        if p.source then
+            add_source_obj_to_scene(scene, p.source, p.x, p.y)
+        end
+    end
+    -- Add overlay in top-left
+    if overlay_source then
+        add_source_obj_to_scene(scene, overlay_source, 30, 30)
+    end
 end
 
 local function quick_setup(props, p)
@@ -1727,61 +1701,100 @@ local function quick_setup(props, p)
 
     local created_count = 0
     local skipped_count = 0
+    local source_handles = {}   -- hold references until we're done
 
     -- ── 1. Create text sources ──
-    local sources = {
-        { name = "SP Timer",    text = "25:00",       size = 72 },
+    local text_id = get_text_source_id()
+    local text_specs = {
         { name = "SP Session",  text = "Focus",       size = 36 },
+        { name = "SP Timer",    text = "25:00",       size = 72 },
         { name = "SP Count",    text = "0/6",         size = 24 },
         { name = "SP Progress", text = "░░░░░░░░░░",  size = 20 },
     }
 
-    for _, s in ipairs(sources) do
-        if create_text_source(s.name, s.text, s.size) then
-            created_count = created_count + 1
+    local text_sources = {}   -- ordered: Session, Timer, Count, Progress
+    for i, spec in ipairs(text_specs) do
+        local settings = obs.obs_data_create()
+        obs.obs_data_set_string(settings, "text", spec.text)
+
+        local font = obs.obs_data_create()
+        obs.obs_data_set_string(font, "face", "Arial")
+        obs.obs_data_set_int(font, "size", spec.size)
+        obs.obs_data_set_int(font, "flags", 0)
+        obs.obs_data_set_obj(settings, "font", font)
+        obs.obs_data_release(font)
+
+        obs.obs_data_set_int(settings, "color", 0xFFFFFF)
+
+        local source, was_created = get_or_create_source(spec.name, text_id, settings)
+        obs.obs_data_release(settings)
+
+        if source then
+            text_sources[i] = source
+            table.insert(source_handles, source)  -- prevent GC
+            if was_created then
+                log("Quick Setup: Created '" .. spec.name .. "'")
+                created_count = created_count + 1
+            else
+                log("Quick Setup: '" .. spec.name .. "' already exists, will add to scenes")
+            end
         else
-            skipped_count = skipped_count + 1
+            log("Quick Setup: Failed to create '" .. spec.name .. "'")
+            text_sources[i] = nil
         end
     end
 
     -- ── 2. Create overlay browser source ──
     local overlay_path = script_path() .. "timer_overlay.html"
-    if create_browser_source("SP Overlay", overlay_path, 220, 220) then
-        created_count = created_count + 1
+    local overlay_settings = obs.obs_data_create()
+    obs.obs_data_set_bool(overlay_settings, "is_local_file", true)
+    obs.obs_data_set_string(overlay_settings, "local_file", overlay_path)
+    obs.obs_data_set_int(overlay_settings, "width", 220)
+    obs.obs_data_set_int(overlay_settings, "height", 220)
+    obs.obs_data_set_bool(overlay_settings, "shutdown", false)
+
+    local overlay_source, overlay_created = get_or_create_source(
+        "SP Overlay", "browser_source", overlay_settings)
+    obs.obs_data_release(overlay_settings)
+
+    if overlay_source then
+        table.insert(source_handles, overlay_source)
+        if overlay_created then
+            log("Quick Setup: Created 'SP Overlay'")
+            created_count = created_count + 1
+        else
+            log("Quick Setup: 'SP Overlay' already exists, will add to scenes")
+        end
     else
-        skipped_count = skipped_count + 1
+        log("Quick Setup: Failed to create 'SP Overlay'")
     end
 
-    -- ── 3. Create Focus and Break scenes ──
-    local scenes_to_create = {
-        { name = "SP Focus", label = "Focus scene" },
-        { name = "SP Break", label = "Break scene" },
-    }
+    -- ── 3. Create/populate Focus and Break scenes ──
+    local scene_names = { "SP Focus", "SP Break" }
 
-    for _, sc in ipairs(scenes_to_create) do
-        if not source_exists(sc.name) then
-            local scene = obs.obs_scene_create(sc.name)
-            if scene then
-                -- Add text sources
-                add_source_to_scene(scene, "SP Session",  700, 300)
-                add_source_to_scene(scene, "SP Timer",    700, 350)
-                add_source_to_scene(scene, "SP Count",    700, 450)
-                add_source_to_scene(scene, "SP Progress", 700, 490)
-
-                -- Add overlay in top-left
-                add_source_to_scene(scene, "SP Overlay", 30, 30)
-
-                obs.obs_scene_release(scene)
-                log("Quick Setup: Created scene '" .. sc.name .. "' with sources")
+    for _, scene_name in ipairs(scene_names) do
+        local scene, was_created = get_or_create_scene(scene_name)
+        if scene then
+            populate_scene(scene, text_sources, overlay_source)
+            if was_created then
+                log("Quick Setup: Created scene '" .. scene_name .. "' with sources")
                 created_count = created_count + 1
+                obs.obs_scene_release(scene)
+            else
+                log("Quick Setup: Added sources to existing scene '" .. scene_name .. "'")
+                -- Don't release — obs_scene_from_source doesn't add a ref
             end
         else
-            log("Quick Setup: Scene '" .. sc.name .. "' already exists, skipping")
-            skipped_count = skipped_count + 1
+            log("Quick Setup: Failed to create scene '" .. scene_name .. "'")
         end
     end
 
-    -- ── 4. Auto-assign sources to script settings ──
+    -- ── 4. Release all source handles ──
+    for _, source in ipairs(source_handles) do
+        obs.obs_source_release(source)
+    end
+
+    -- ── 5. Auto-assign sources to script settings ──
     if quick_setup_settings then
         obs.obs_data_set_string(quick_setup_settings, "time_source", "SP Timer")
         obs.obs_data_set_string(quick_setup_settings, "message_source", "SP Session")
@@ -1807,7 +1820,7 @@ local function quick_setup(props, p)
         log("Quick Setup: Auto-assigned sources and scenes to settings")
     end
 
-    -- ── 5. Switch to Focus scene ──
+    -- ── 6. Switch to Focus scene ──
     local focus_scene_source = obs.obs_get_source_by_name("SP Focus")
     if focus_scene_source then
         obs.obs_frontend_set_current_scene(focus_scene_source)
@@ -1815,13 +1828,11 @@ local function quick_setup(props, p)
         log("Quick Setup: Switched to SP Focus scene")
     end
 
-    -- ── 6. Report results ──
-    if created_count > 0 and skipped_count == 0 then
+    -- ── 7. Report results ──
+    if created_count > 0 then
         log("Quick Setup: ✓ Complete! Created " .. created_count .. " items. Press Start to begin!")
-    elseif created_count > 0 then
-        log("Quick Setup: ✓ Created " .. created_count .. " items, skipped " .. skipped_count .. " (already existed)")
     else
-        log("Quick Setup: All items already exist (" .. skipped_count .. " skipped). Setup was already done.")
+        log("Quick Setup: ✓ All items already exist. Sources added to scenes.")
     end
 
     -- Refresh the properties UI to reflect new settings
