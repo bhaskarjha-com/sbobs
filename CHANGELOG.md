@@ -2,6 +2,12 @@
 
 All notable changes to SessionPulse are documented here.
 
+## [5.4.1] — 2026-04-02
+
+### Fixed
+- **Quick Setup scene dropdowns stuck on "(None)"** — after creating "SP Focus" / "SP Break" scenes, the scene-list dropdowns hadn't been re-populated so `obs_properties_apply_settings` silently rejected the new values (no matching item → fallback to empty string). Fix: re-populate both scene list and source list dropdown properties from the live OBS state *after* scene/source creation, *before* applying settings.
+- **Quick Setup source dropdowns** — same stale-list issue affected the four text source dropdowns (`SP Timer`, `SP Session`, `SP Count`, `SP Progress`) and `SP Overlay`. Now all source-list properties are refreshed after Quick Setup creates items.
+
 ## [5.4.0] — 2026-03-31
 
 ### Added

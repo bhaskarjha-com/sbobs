@@ -17,10 +17,13 @@ if not obs then
     return
 end
 
-local VERSION = "5.4.0"
+local VERSION = "5.4.1"
 
 ------------------------------------------------------------------------
--- State
+-- 1. State Variables
+--
+-- Defines all runtime state (timers, flags, counters).
+-- Functions: None (variable declarations only)
 --
 -- State Machine (valid combinations only):
 --   IDLE:          is_running=false, is_paused=false, is_overtime=false
@@ -81,7 +84,11 @@ local fade_elapsed = 0
 local fade_duration = 3               -- will be set from volume_fade_duration config
 
 ------------------------------------------------------------------------
--- Configuration (loaded from settings via script_update)
+-- 2. Configuration
+--
+-- Variables loaded from OBS properties (durations, toggles, paths).
+-- Updated during `script_update()`.
+-- Debugging: If a setting change isn't applied, check `script_update`.
 ------------------------------------------------------------------------
 local timer_mode = "pomodoro"
 
@@ -181,7 +188,9 @@ local short_break_alert_sound_path = ""
 local long_break_alert_sound_path = ""
 
 ------------------------------------------------------------------------
--- Hotkey IDs
+-- 3. Hotkey IDs
+--
+-- Storage for OBS frontend hotkey handles.
 ------------------------------------------------------------------------
 local hotkey_start_pause = obs.OBS_INVALID_HOTKEY_ID
 local hotkey_stop = obs.OBS_INVALID_HOTKEY_ID
@@ -191,7 +200,15 @@ local hotkey_sub_time = obs.OBS_INVALID_HOTKEY_ID
 local hotkey_reset = obs.OBS_INVALID_HOTKEY_ID
 
 ------------------------------------------------------------------------
--- Helpers
+-- 4. Helpers
+--
+-- Utility routines for time math, formatting, string parsing, and paths.
+-- Functions: log, mark_dirty, json_escape, get_session_elapsed,
+-- compute_current_time, get_duration_for_session, format_time,
+-- format_overtime, format_duration_human, get_state_file_path,
+-- get_log_file_path, parse_suggestions, parse_custom_intervals,
+-- get_break_suggestion
+-- Debugging: Check `get_session_elapsed` if drift or timer math is off.
 ------------------------------------------------------------------------
 local function log(msg)
     print("[SessionPulse] " .. msg)
@@ -324,7 +341,11 @@ local function get_break_suggestion()
 end
 
 ------------------------------------------------------------------------
--- Session History Log
+-- 5. Session History Log
+--
+-- CSV file read/write operations for tracking daily progress.
+-- Functions: log_session, compute_daily_focus
+-- Debugging: If session goals aren't updating, verify CSV headers.
 ------------------------------------------------------------------------
 local function log_session(stype, duration, completed)
     if not enable_session_log then return end
@@ -389,7 +410,12 @@ local function compute_daily_focus()
 end
 
 ------------------------------------------------------------------------
--- Session Persistence
+-- 6. Session Persistence
+--
+-- JSON state saving, loading, migration, and application.
+-- Functions: get_next_session_type, save_state, load_state,
+-- delete_state_file, apply_saved_state
+-- Debugging: Check `state_dirty` if files aren't writing, or JSON parser if corrupt.
 ------------------------------------------------------------------------
 local function get_next_session_type()
     if timer_mode ~= "pomodoro" then return "" end
@@ -686,7 +712,11 @@ local function apply_saved_state(state)
 end
 
 ------------------------------------------------------------------------
--- OBS Source Interaction
+-- 7. OBS Source Interaction
+--
+-- Text, background media, and alert sound updates via OBS data API.
+-- Functions: update_obs_source_text, update_background_media, play_alert_sound
+-- Debugging: Ensure sources exist exactly as named if they don't update.
 ------------------------------------------------------------------------
 local function update_obs_source_text(source_name, text)
     if not source_name or source_name == "" then return end
@@ -757,7 +787,11 @@ local function play_alert_sound()
 end
 
 ------------------------------------------------------------------------
--- Scene Switching
+-- 8. Scene Switching
+--
+-- Automated OBS scene transitions based on session state.
+-- Functions: do_scene_switch, schedule_scene_switch, process_pending_scene_switch
+-- Debugging: Verify scene names match exactly if switching fails.
 ------------------------------------------------------------------------
 local function do_scene_switch()
     if not enable_scene_switching then return end
@@ -790,7 +824,11 @@ local function process_pending_scene_switch()
 end
 
 ------------------------------------------------------------------------
--- Mic Control
+-- 9. Mic Control
+--
+-- Mute/unmute microphone logic for Focus vs. Break sessions.
+-- Functions: update_mic_state
+-- Debugging: Check if mic_source_name exists if muting doesn't occur.
 ------------------------------------------------------------------------
 local function update_mic_state()
     if not enable_mic_control then return end
@@ -807,7 +845,11 @@ local function update_mic_state()
 end
 
 ------------------------------------------------------------------------
--- Source Visibility
+-- 10. Source Visibility
+--
+-- Show/hide specific sources (supports comma-separated list).
+-- Functions: update_source_visibility
+-- Debugging: Check for typos in the comma-separated source names.
 ------------------------------------------------------------------------
 local function update_source_visibility()
     if not hide_during_focus_source or hide_during_focus_source == "" then return end
@@ -830,7 +872,11 @@ local function update_source_visibility()
 end
 
 ------------------------------------------------------------------------
--- Volume Ducking
+-- 11. Volume Ducking
+--
+-- Background audio fade out/in with ease-in-out interpolation.
+-- Functions: set_source_volume, start_volume_fade, process_volume_fade, update_volume
+-- Debugging: If volume drops but doesn't fade, enable_volume_fade may be unchecked.
 ------------------------------------------------------------------------
 local function set_source_volume(source_name, volume)
     if not source_name or source_name == "" then return end
@@ -885,7 +931,11 @@ local function update_volume()
 end
 
 ------------------------------------------------------------------------
--- Filter Toggle
+-- 12. Filter Toggle
+--
+-- Enable/disable OBS filters (e.g., color correction) per session.
+-- Functions: set_filter_enabled, update_filters
+-- Debugging: Verify exact filter name; fallback applies if OBS < 30.2.
 ------------------------------------------------------------------------
 local function set_filter_enabled(source, filter_name, enabled)
     -- obs_source_filter_set_enabled(source, name, enabled) requires OBS 30.2+.
@@ -938,7 +988,11 @@ local function update_filters()
 end
 
 ------------------------------------------------------------------------
--- Chapter Markers
+-- 13. Chapter Markers
+--
+-- Add markers to active recordings when sessions change.
+-- Functions: add_chapter_marker
+-- Debugging: Feature only works if an active recording is happening.
 ------------------------------------------------------------------------
 local function add_chapter_marker()
     if not enable_chapter_markers then return end
@@ -963,7 +1017,12 @@ local function add_chapter_marker()
 end
 
 ------------------------------------------------------------------------
--- Display
+-- 14. Display
+--
+-- Progress bar rendering, status strings, and time formatting.
+-- Functions: create_progress_bar, get_session_message, update_display_texts,
+-- show_session_summary
+-- Debugging: If UI is stalled, ensure update_display_texts is called.
 ------------------------------------------------------------------------
 local function create_progress_bar(elapsed, total)
     if not show_progress_bar or total <= 0 then return "" end
@@ -1046,7 +1105,11 @@ local function show_session_summary()
 end
 
 ------------------------------------------------------------------------
--- Session Management
+-- 15. Session Management
+--
+-- Core logic: state transitions, segment logic, streak tracking.
+-- Functions: show_transition_msg, update_session, switch_session
+-- Debugging: This is the orchestrator. Start here if timers do not loop properly.
 ------------------------------------------------------------------------
 local function show_transition_msg(message)
     transition_message = message
@@ -1181,7 +1244,11 @@ local function switch_session()
 end
 
 ------------------------------------------------------------------------
--- Timer
+-- 16. Timer
+--
+-- The 1-second interval tick: warning alerts, overtime, time computation.
+-- Functions: fire_warning_alert, check_warning_alerts, timer_tick
+-- Debugging: If time freezes, verify `timer_tick` is still registered via `obs.timer_add`.
 ------------------------------------------------------------------------
 local function fire_warning_alert()
     -- Uses focus_alert_sound_path as the warning sound (same alert source)
@@ -1288,7 +1355,12 @@ local function timer_tick()
 end
 
 ------------------------------------------------------------------------
--- Controls
+-- 17. Controls
+--
+-- Start, stop, pause, skip, reset, and time adjustment commands.
+-- Functions: start_timer, toggle_pause, stop_timer, reset_timer, skip_session,
+-- add_time, subtract_time, resume_previous_session
+-- Debugging: These wrappers mostly manage state flags; output goes through `save_state()`.
 ------------------------------------------------------------------------
 local function start_timer()
     if is_running and not is_paused then return end
@@ -1537,7 +1609,11 @@ local function resume_previous_session()
 end
 
 ------------------------------------------------------------------------
--- Hotkey Callbacks
+-- 18. Hotkey Callbacks
+--
+-- Thin wrappers for hotkey presses routing to Control functions.
+-- Functions: on_hotkey_*
+-- Debugging: Ensure hotkeys are bound in OBS Settings -> Hotkeys.
 ------------------------------------------------------------------------
 local function on_hotkey_start_pause(pressed)
     if not pressed then return end
@@ -1570,7 +1646,11 @@ local function on_hotkey_reset(pressed)
 end
 
 ------------------------------------------------------------------------
--- Frontend Events
+-- 19. Frontend Events
+--
+-- Hooks for OBS stream/recording start/stop events.
+-- Functions: on_frontend_event
+-- Debugging: If auto-start fails, check OBS stream event dispatching.
 ------------------------------------------------------------------------
 local function on_frontend_event(event)
     if event == obs.OBS_FRONTEND_EVENT_STREAMING_STARTED then
@@ -1598,7 +1678,11 @@ local function on_frontend_event(event)
 end
 
 ------------------------------------------------------------------------
--- Source / Scene Enumeration
+-- 20. Source/Scene Enumeration
+--
+-- Helpers to populate OBS property dropdowns with current items.
+-- Functions: populate_source_list, populate_scene_list
+-- Debugging: If properties show "(None)", these might run before sources exist.
 ------------------------------------------------------------------------
 local function populate_source_list(prop)
     obs.obs_property_list_clear(prop)
@@ -1625,7 +1709,12 @@ local function populate_scene_list(prop)
 end
 
 ------------------------------------------------------------------------
--- Quick Setup Wizard
+-- 21. Quick Setup Wizard
+--
+-- Auto-create sources, scenes, and overlays to streamline onboarding.
+-- Functions: get_text_source_id, get_or_create_source, add_source_obj_to_scene,
+-- get_or_create_scene, populate_scene, quick_setup
+-- Debugging: Make sure to re-apply settings `obs_properties_apply_settings` at end.
 ------------------------------------------------------------------------
 local quick_setup_settings = nil   -- reference to current settings, set by script_update
 
@@ -1655,6 +1744,11 @@ end
 
 local function add_source_obj_to_scene(scene, source, x, y)
     if not scene or not source then return end
+
+    local source_name = obs.obs_source_get_name(source)
+    local existing_item = obs.obs_scene_find_source(scene, source_name)
+    if existing_item then return end
+
     local item = obs.obs_scene_add(scene, source)
     if item then
         local pos = obs.vec2()
@@ -1736,7 +1830,8 @@ local function quick_setup(props, p)
                 log("Quick Setup: Created '" .. spec.name .. "'")
                 created_count = created_count + 1
             else
-                log("Quick Setup: '" .. spec.name .. "' already exists, will add to scenes")
+                log("Quick Setup: '" .. spec.name .. "' already exists")
+                skipped_count = skipped_count + 1
             end
         else
             log("Quick Setup: Failed to create '" .. spec.name .. "'")
@@ -1763,7 +1858,8 @@ local function quick_setup(props, p)
             log("Quick Setup: Created 'SP Overlay'")
             created_count = created_count + 1
         else
-            log("Quick Setup: 'SP Overlay' already exists, will add to scenes")
+            log("Quick Setup: 'SP Overlay' already exists")
+            skipped_count = skipped_count + 1
         end
     else
         log("Quick Setup: Failed to create 'SP Overlay'")
@@ -1781,7 +1877,8 @@ local function quick_setup(props, p)
                 created_count = created_count + 1
                 obs.obs_scene_release(scene)
             else
-                log("Quick Setup: Added sources to existing scene '" .. scene_name .. "'")
+                log("Quick Setup: Checked existing scene '" .. scene_name .. "' for missing sources")
+                skipped_count = skipped_count + 1
                 -- Don't release — obs_scene_from_source doesn't add a ref
             end
         else
@@ -1830,20 +1927,63 @@ local function quick_setup(props, p)
 
     -- ── 7. Report results ──
     if created_count > 0 then
-        log("Quick Setup: ✓ Complete! Created " .. created_count .. " items. Press Start to begin!")
+        log("Quick Setup: ✓ Complete! Created " .. created_count .. " items (" .. skipped_count .. " skipped). Press Start to begin!")
     else
-        log("Quick Setup: ✓ All items already exist. Sources added to scenes.")
+        log("Quick Setup: All items already exist (" .. skipped_count .. " skipped). Setup was already done.")
+    end
+
+    -- ── Re-populate scene list dropdowns ──
+    -- The scene dropdowns were populated during script_properties(), *before*
+    -- Quick Setup created "SP Focus" / "SP Break".  OBS's property system
+    -- silently rejects list values that don't match any existing item and
+    -- falls back to "(None)" (value "").  We must refresh the dropdown
+    -- item lists so the newly-created scene names are valid selections
+    -- before we apply settings.
+    local scene_props = { "focus_scene", "short_break_scene", "long_break_scene" }
+    for _, key in ipairs(scene_props) do
+        -- Walk into the checkable group "enable_scene_switching" to find child props
+        local grp = obs.obs_properties_get(props, "enable_scene_switching")
+        if grp then
+            local grp_props = obs.obs_property_group_content(grp)
+            if grp_props then
+                local sp = obs.obs_properties_get(grp_props, key)
+                if sp then populate_scene_list(sp) end
+            end
+        end
+    end
+
+    -- Also re-populate source list dropdowns (same issue for newly-created sources)
+    local src_grp = obs.obs_properties_get(props, "text_sources_group")
+    if src_grp then
+        local src_grp_props = obs.obs_property_group_content(src_grp)
+        if src_grp_props then
+            local source_keys = {
+                "time_source", "message_source", "focus_count_source",
+                "progress_bar_source", "background_media_source", "alert_source_name"
+            }
+            for _, key in ipairs(source_keys) do
+                local sp = obs.obs_properties_get(src_grp_props, key)
+                if sp then populate_source_list(sp) end
+            end
+        end
     end
 
     -- Force the properties UI to re-read our modified settings.
-    -- Without this, dropdowns inside checkable groups won't update.
+    -- Now that dropdowns contain the newly-created scene/source names,
+    -- obs_properties_apply_settings will correctly select them instead of
+    -- falling back to "(None)".
     obs.obs_properties_apply_settings(props, quick_setup_settings)
 
     return true
 end
 
 ------------------------------------------------------------------------
--- OBS Script Interface
+-- 22. OBS Script Interface
+--
+-- GUI definitions, default values, and setting update handlers.
+-- Functions: script_description, script_properties, script_defaults, script_update,
+-- update_timer_config, update_automation_config, update_source_config
+-- Debugging: If property UI breaks, check `script_properties` definitions.
 ------------------------------------------------------------------------
 function script_description()
     return "SessionPulse v" .. VERSION ..
@@ -2191,7 +2331,11 @@ function script_update(settings)
 end
 
 ------------------------------------------------------------------------
--- Lifecycle
+-- 23. Lifecycle
+--
+-- Core OBS script entry points: load, save, unload.
+-- Functions: script_load, script_save, script_unload
+-- Debugging: Hotkey registrations happen in `script_load`, unregister in `script_unload`.
 ------------------------------------------------------------------------
 function script_load(settings)
     obs.timer_add(timer_tick, 1000)
