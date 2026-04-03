@@ -778,6 +778,12 @@ function setStateStatus(status, detail) {
 async function refreshStateSnapshot() {
   try {
     lastState = await loadStateJson();
+    try {
+      const liveState = await loadStateViaObsSources();
+      lastState = { ...lastState, ...liveState };
+    } catch (liveError) {
+      // Keep the JSON state if live OBS source reconstruction is unavailable.
+    }
     consecutiveFetchFailures = 0;
     setStateStatus('connected', wsConnected ? 'Live state + dock controls connected' : `Read-only mode · ${preferredStateUrl}`);
     update(lastState);
@@ -952,13 +958,20 @@ function isMissingControlBridgeError(error) {
 }
 
 async function createControlBridgeInput() {
+  const controlSceneName = 'SP Internal';
   const sceneList = await callObs('GetSceneList');
-  const sceneName = sceneList && (sceneList.currentProgramSceneName
-    || sceneList.currentPreviewSceneName
-    || (Array.isArray(sceneList.scenes) && sceneList.scenes[0] && sceneList.scenes[0].sceneName));
+  const scenes = Array.isArray(sceneList && sceneList.scenes) ? sceneList.scenes : [];
+  const hasControlScene = scenes.some(scene => scene && scene.sceneName === controlSceneName);
 
-  if (!sceneName) {
-    throw new Error('Unable to resolve the current OBS scene for SP Control');
+  if (!hasControlScene) {
+    try {
+      await callObs('CreateScene', { sceneName: controlSceneName });
+    } catch (error) {
+      const message = String(error && error.message ? error.message : error || '').toLowerCase();
+      if (!message.includes('already exists')) {
+        throw error;
+      }
+    }
   }
 
   let candidateInputKinds = [];
@@ -980,7 +993,7 @@ async function createControlBridgeInput() {
   for (const inputKind of candidateInputKinds) {
     try {
       await callObs('CreateInput', {
-        sceneName,
+        sceneName: controlSceneName,
         inputName: 'SP Control',
         inputKind,
         inputSettings: {
@@ -1259,6 +1272,7 @@ function buildFallbackChatStatus(sessionText, timerText, countText, paused) {
 }
 
 async function loadStateViaObsSources() {
+  const previousState = lastState || {};
   const [controlText, timerText, sessionText, countText, progressText, statusText] = await Promise.all([
     getObsInputText('SP Control').catch(() => ''),
     getObsInputText('SP Timer').catch(() => ''),
@@ -1275,6 +1289,7 @@ async function loadStateViaObsSources() {
     return {
       is_running: !!controlState.is_running,
       is_paused: !!controlState.is_paused,
+      resume_available: !!controlState.resume_available,
       session_type: controlState.session_type || (controlState.is_running ? 'Focus' : 'Ready'),
       current_time: currentTime,
       total_time: totalTime,
@@ -1322,6 +1337,7 @@ async function loadStateViaObsSources() {
   return {
     is_running: isRunning,
     is_paused: paused,
+    resume_available: !!previousState.resume_available,
     session_type: sessionType || (isRunning ? 'Focus' : 'Ready'),
     current_time: currentTime != null ? currentTime : 0,
     total_time: totalTime,
@@ -1329,14 +1345,24 @@ async function loadStateViaObsSources() {
     progress_percent: progressPercent,
     completed_focus_sessions: counts.completed,
     goal_sessions: counts.goal,
-    total_focus_seconds: 0,
-    cycle_count: 0,
-    stream_duration: 0,
+    total_focus_seconds: Number(previousState.total_focus_seconds) || 0,
+    cycle_count: Number(previousState.cycle_count) || 0,
+    stream_duration: Number(previousState.stream_duration) || 0,
     timer_mode: sessionType === 'Countdown' ? 'countdown' : sessionType === 'Stopwatch' ? 'stopwatch' : 'pomodoro',
     chat_status_line: buildFallbackChatStatus(sessionText, timerText, countText, paused),
     status_active: statusMessage !== '',
     status_message: statusMessage,
-    status_until_epoch: 0
+    status_until_epoch: 0,
+    next_session_type: previousState.next_session_type || '',
+    break_suggestion: previousState.break_suggestion || '',
+    ends_at: previousState.ends_at || '',
+    show_transition: false,
+    transition_message: '',
+    custom_segment_name: previousState.custom_segment_name || '',
+    custom_segment_index: Number(previousState.custom_segment_index) || 0,
+    custom_segment_count: Number(previousState.custom_segment_count) || 0,
+    is_overtime: false,
+    overtime_seconds: 0
   };
 }
 
@@ -1346,6 +1372,7 @@ async function connectWebSocket() {
   try {
     await callObs('GetVersion');
     setWsStatus('connected');
+    refreshStateSnapshot().catch(() => {});
   } catch (error) {
     console.warn('[Dock] WebSocket probe failed:', error.message);
     setWsStatus('disconnected');
@@ -1462,7 +1489,7 @@ function update(state) {
     return;
   }
 
-  const { is_running, is_paused, session_type, current_time, total_time,
+  const { is_running, is_paused, resume_available, session_type, current_time, total_time,
           completed_focus_sessions, goal_sessions, total_focus_seconds,
           cycle_count, show_transition, transition_message, timer_mode,
           custom_segment_name, custom_segment_index, custom_segment_count,
@@ -1488,7 +1515,8 @@ function update(state) {
     btnStartPause.querySelector('.icon').textContent = '▶';
   }
 
-  btnResumePrevious.disabled = controlActionInFlight || !wsConnected || is_running;
+  const canResumePrevious = !!resume_available && !is_running;
+  btnResumePrevious.disabled = controlActionInFlight || !wsConnected || !canResumePrevious;
 
   // Status dot
   if (overtime) {

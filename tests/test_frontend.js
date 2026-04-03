@@ -301,7 +301,11 @@ test('timer_dock.html: includes status editor UI', timerDockHtml.includes('statu
 test('timer_dock.html: writes status commands through SP Control', timerDockHtml.includes("inputName: 'SP Control'"));
 test('timer_dock.html: parses control bridge state', timerDockHtml.includes("payload.kind !== 'state'"));
 test('timer_dock.html: reads SP Control during OBS fallback', timerDockHtml.includes("getObsInputText('SP Control')"));
-test('timer_dock.html: self-heals missing SP Control input', timerDockHtml.includes("CreateInput") && timerDockHtml.includes("GetSceneList") && timerDockHtml.includes("GetInputKindList"));
+test('timer_dock.html: self-heals missing SP Control input', timerDockHtml.includes("CreateInput") && timerDockHtml.includes("CreateScene") && timerDockHtml.includes("GetInputKindList"));
+test('timer_dock.html: preserves rich fields during plain-source fallback', timerDockHtml.includes("const previousState = lastState || {}") && timerDockHtml.includes("stream_duration: Number(previousState.stream_duration) || 0"));
+test('timer_dock.html: merges live bridge state over JSON state', timerDockHtml.includes("const liveState = await loadStateViaObsSources();"));
+test('timer_dock.html: uses resume_available for Resume button', timerDockHtml.includes("const canResumePrevious = !!resume_available && !is_running;"));
+test('timer_dock.html: refreshes state immediately after WS connect', timerDockHtml.includes("refreshStateSnapshot().catch(() => {});"));
 test('timer_overlay.html: does not include overlay status editor UI', !timerOverlayHtml.includes('statusControlToggle'));
 
 section("State Polling Recovery");

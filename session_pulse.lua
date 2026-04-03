@@ -166,6 +166,7 @@ local alert_source_name = ""
 local status_state = {
     source_name = "",
     control_source_name = "SP Control",
+    control_scene_name = "SP Internal",
     message_input = "",
     duration_minutes = 0,
     current_message = "",
@@ -480,7 +481,7 @@ end
 -- delete_state_file, apply_saved_state
 -- Debugging: Check `state_dirty` if files aren't writing, or JSON parser if corrupt.
 ------------------------------------------------------------------------
-local update_control_bridge_state
+update_control_bridge_state = nil
 
 local function get_next_session_type()
     if timer_mode ~= "pomodoro" then return "" end
@@ -609,6 +610,7 @@ local function save_state(force)
         '  "session_epoch": %d,\n' ..
         '  "session_pause_total": %d,\n' ..
         '  "session_target_duration": %d,\n' ..
+        '  "resume_available": %s,\n' ..
         '  "timestamp": %d\n' ..
         '}',
         json_escape(VERSION),
@@ -648,6 +650,7 @@ local function save_state(force)
         session_epoch,
         session_pause_total,
         session_target_duration,
+        tostring(has_pending_resume),
         now
     )
 
@@ -1806,9 +1809,10 @@ function build_control_bridge_state_json()
     end
 
     return string.format(
-        '{"kind":"state","is_running":%s,"is_paused":%s,"session_type":"%s","current_time":%d,"total_time":%d,"progress_percent":%d,"completed_focus_sessions":%d,"goal_sessions":%d,"total_focus_seconds":%d,"cycle_count":%d,"stream_duration":%d,"timer_mode":"%s","chat_status_line":"%s","status_active":%s,"status_message":"%s","status_until_epoch":%d,"is_overtime":%s,"overtime_seconds":%d,"next_session_type":"%s","break_suggestion":"%s","ends_at":"%s","show_transition":%s,"transition_message":"%s","custom_segment_name":"%s","custom_segment_index":%d,"custom_segment_count":%d,"timestamp":%d}',
+        '{"kind":"state","is_running":%s,"is_paused":%s,"resume_available":%s,"session_type":"%s","current_time":%d,"total_time":%d,"progress_percent":%d,"completed_focus_sessions":%d,"goal_sessions":%d,"total_focus_seconds":%d,"cycle_count":%d,"stream_duration":%d,"timer_mode":"%s","chat_status_line":"%s","status_active":%s,"status_message":"%s","status_until_epoch":%d,"is_overtime":%s,"overtime_seconds":%d,"next_session_type":"%s","break_suggestion":"%s","ends_at":"%s","show_transition":%s,"transition_message":"%s","custom_segment_name":"%s","custom_segment_index":%d,"custom_segment_count":%d,"timestamp":%d}',
         tostring(is_running),
         tostring(is_paused),
+        tostring(has_pending_resume),
         json_escape(session_type),
         display_time,
         total,
@@ -2572,6 +2576,41 @@ function add_source_obj_to_scene(scene, source, x, y)
     end
 end
 
+function remove_source_obj_from_scene(scene, source_name)
+    if not scene or not source_name or source_name == "" then return false end
+    local item = obs.obs_scene_find_source(scene, source_name)
+    if not item then return false end
+    if type(obs.obs_sceneitem_remove) == "function" then
+        obs.obs_sceneitem_remove(item)
+        return true
+    end
+    return false
+end
+
+function get_or_create_scene(scene_name)
+    if not scene_name or scene_name == "" then return nil, false end
+
+    local scene_source = obs.obs_get_source_by_name(scene_name)
+    if scene_source then
+        local scene = obs.obs_scene_from_source(scene_source)
+        obs.obs_source_release(scene_source)
+        if scene then
+            return scene, false
+        end
+    end
+
+    if type(obs.obs_scene_create) ~= "function" then
+        return nil, false
+    end
+
+    local scene = obs.obs_scene_create(scene_name)
+    if scene then
+        return scene, true
+    end
+
+    return nil, false
+end
+
 function populate_scene(scene, source_list, overlay_source, background_sources, music_source, alert_source)
     if background_sources then
         for _, source in ipairs(background_sources) do
@@ -2614,31 +2653,25 @@ function ensure_overlay_control_scene_item()
 
     if not control_source then return false end
 
+    local control_scene, _ = get_or_create_scene(status_state.control_scene_name)
+    if control_scene then
+        add_source_obj_to_scene(control_scene, control_source, -10000, -10000)
+        ensured = true
+    end
+
     if type(obs.obs_frontend_get_scenes) == "function" then
         local scene_sources = obs.obs_frontend_get_scenes()
         if scene_sources then
             for _, scene_source in ipairs(scene_sources) do
                 local scene = obs.obs_scene_from_source(scene_source)
-                if scene then
-                    add_source_obj_to_scene(scene, control_source, -10000, -10000)
-                    ensured = true
+                local scene_name = type(obs.obs_source_get_name) == "function" and obs.obs_source_get_name(scene_source) or ""
+                if scene and scene_name ~= status_state.control_scene_name then
+                    remove_source_obj_from_scene(scene, status_state.control_source_name)
                 end
             end
             if type(obs.source_list_release) == "function" then
                 obs.source_list_release(scene_sources)
             end
-        end
-    end
-
-    if not ensured and type(obs.obs_frontend_get_current_scene) == "function" then
-        local scene_source = obs.obs_frontend_get_current_scene()
-        if scene_source then
-            local scene = obs.obs_scene_from_source(scene_source)
-            if scene then
-                add_source_obj_to_scene(scene, control_source, -10000, -10000)
-                ensured = true
-            end
-            obs.obs_source_release(scene_source)
         end
     end
 
@@ -3503,10 +3536,35 @@ function script_update(settings)
     local resumable_state = nil
     if not is_running then
         resumable_state = refresh_pending_resume_state()
+        update_control_bridge_state(true)
     end
 
     if not is_running then
         if resumable_state and resumable_state.is_running then
+            if timer_mode == "pomodoro" then
+                current_time = focus_duration
+                session_type = "Focus"
+            elseif timer_mode == "countdown" then
+                current_time = countdown_duration
+                session_type = "Countdown"
+            elseif timer_mode == "stopwatch" then
+                current_time = 0
+                session_type = "Stopwatch"
+            elseif timer_mode == "custom" and #custom_segments > 0 then
+                current_time = custom_segments[1].duration
+                session_type = custom_segments[1].name
+            end
+            show_transition = false
+            is_paused = false
+            is_overtime = false
+            overtime_seconds = 0
+            overtime_epoch = 0
+            update_display_texts()
+            update_background_music(false)
+            update_source_visibility()
+            update_volume()
+            update_filters()
+            update_control_bridge_state(true)
             return
         end
 
@@ -3628,6 +3686,7 @@ function script_load(settings)
     if saved_state and saved_state.is_running then
         log("Found saved session — use 'Resume Previous Session' button to restore")
     end
+    update_control_bridge_state(true)
 
     -- Load today's focus total from CSV for daily goal tracking
     compute_daily_focus()

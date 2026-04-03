@@ -74,6 +74,10 @@ local function make_mock_obs()
         id = "scene",
         scene = alternate_scene
     }
+    local scene_sources = {
+        current_scene_source,
+        alternate_scene_source
+    }
 
     function mock.obs_data_create()
         counters.data_creates = counters.data_creates + 1
@@ -206,7 +210,7 @@ local function make_mock_obs()
     end
 
     function mock.obs_frontend_get_scenes()
-        return { current_scene_source, alternate_scene_source }
+        return scene_sources
     end
 
     function mock.obs_frontend_add_event_callback(callback)
@@ -255,7 +259,8 @@ local function make_mock_obs()
 
     function mock.obs_scene_add(scene, source)
         local item = {
-            source = source
+            source = source,
+            scene = scene
         }
         scene.items[source.name] = item
         return item
@@ -263,6 +268,26 @@ local function make_mock_obs()
 
     function mock.obs_sceneitem_set_pos(item, pos)
         item.pos = { x = pos.x, y = pos.y }
+    end
+
+    function mock.obs_sceneitem_remove(item)
+        if not item or not item.scene or not item.source then return end
+        item.scene.items[item.source.name] = nil
+    end
+
+    function mock.obs_scene_create(name)
+        local scene = {
+            name = name,
+            items = {}
+        }
+        local scene_source = {
+            name = name,
+            id = "scene",
+            scene = scene
+        }
+        table.insert(scene_sources, scene_source)
+        sources[name] = scene_source
+        return scene
     end
 
     function mock.source_list_release(items)
@@ -276,6 +301,7 @@ local function make_mock_obs()
     mock.sources = sources
     mock.current_scene = current_scene
     mock.alternate_scene = alternate_scene
+    mock.scene_sources = scene_sources
     return mock
 end
 
@@ -550,6 +576,69 @@ do
     cleanup_state_files()
 end
 
+section("Resumable Startup Display")
+do
+    fake_now = 1030
+    local state_file = io.open(TEST_STATE_FILE, "w")
+    state_file:write(table.concat({
+        "{",
+        '  "version": "5.4.1",',
+        '  "timer_mode": "pomodoro",',
+        '  "is_running": true,',
+        '  "is_paused": true,',
+        '  "session_type": "Focus",',
+        '  "current_time": 90,',
+        '  "total_time": 120,',
+        '  "elapsed_seconds": 30,',
+        '  "progress_percent": 25,',
+        '  "cycle_count": 0,',
+        '  "completed_focus_sessions": 0,',
+        '  "goal_sessions": 6,',
+        '  "total_focus_seconds": 0,',
+        '  "show_transition": false,',
+        '  "transition_message": "",',
+        '  "custom_segment_name": "",',
+        '  "custom_segment_index": 0,',
+        '  "custom_segment_count": 0,',
+        '  "is_overtime": false,',
+        '  "overtime_seconds": 0,',
+        '  "next_session_type": "Short Break",',
+        '  "next_session_in": 90,',
+        '  "sessions_remaining": 6,',
+        '  "break_suggestion": "",',
+        '  "stream_duration": 0,',
+        '  "chat_status_line": "Focus 01:30 (0/6) [Paused]",',
+        '  "session_label": "",',
+        '  "status_active": false,',
+        '  "status_message": "",',
+        '  "status_until_epoch": 0,',
+        '  "daily_focus_seconds": 0,',
+        '  "daily_goal_seconds": 0,',
+        '  "focus_streak": 0,',
+        '  "session_epoch": 1000,',
+        '  "session_pause_total": 0,',
+        '  "session_target_duration": 120,',
+        '  "resume_available": true,',
+        '  "timestamp": 1030',
+        "}"
+    }, "\n"))
+    state_file:close()
+
+    local mock_obs = load_runtime(base_settings, { preserve_state = true })
+    local message_source = mock_obs.sources["MessageText"]
+    local time_source = mock_obs.sources["TimeText"]
+    local control_source = mock_obs.sources["SP Control"]
+    local message_text = message_source and message_source.settings and message_source.settings.text or ""
+    local time_text = time_source and time_source.settings and time_source.settings.text or ""
+    local control_text = control_source and control_source.settings and control_source.settings.text or ""
+
+    test("resumable startup shows Ready instead of stale paused session text", message_text == "Ready")
+    test("resumable startup resets visible timer text to default idle time", time_text == "25:00")
+    test("resumable startup bridge advertises resume availability", control_text:find('"resume_available":true', 1, true) ~= nil)
+    test("resumable startup bridge advertises idle runtime", control_text:find('"is_running":false', 1, true) ~= nil)
+    cleanup_state_files()
+end
+
 section("Idle State Persistence")
 do
     fake_now = 1000
@@ -606,8 +695,11 @@ do
     test("quick setup places count in current scene", mock_obs.current_scene.items["SP Count"] ~= nil)
     test("quick setup places progress in current scene", mock_obs.current_scene.items["SP Progress"] ~= nil)
     test("quick setup places status in current scene", mock_obs.current_scene.items["SP Status"] ~= nil)
-    test("quick setup places control source in current scene", mock_obs.current_scene.items["SP Control"] ~= nil)
-    test("quick setup places control source in alternate scene", mock_obs.alternate_scene.items["SP Control"] ~= nil)
+    local internal_scene = mock_obs.sources["SP Internal"] and mock_obs.sources["SP Internal"].scene or nil
+    test("quick setup keeps control source out of current scene", mock_obs.current_scene.items["SP Control"] == nil)
+    test("quick setup keeps control source out of alternate scene", mock_obs.alternate_scene.items["SP Control"] == nil)
+    test("quick setup creates internal control scene", internal_scene ~= nil)
+    test("quick setup places control source in internal scene", internal_scene and internal_scene.items["SP Control"] ~= nil)
     test("quick setup places overlay in current scene", mock_obs.current_scene.items["SP Overlay"] ~= nil)
     test("quick setup places background image in current scene", mock_obs.current_scene.items["SP Background Image"] ~= nil)
     test("quick setup places background video in current scene", mock_obs.current_scene.items["SP Background Video"] ~= nil)
