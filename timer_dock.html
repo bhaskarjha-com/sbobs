@@ -220,11 +220,11 @@
   }
   .ctrl-btn .icon { font-size: 0.8rem; }
 
-  .controls-row2 {
-    display: flex;
-    gap: 4px;
-    margin-bottom: 10px;
-  }
+.controls-row2 {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 10px;
+}
 
   .progress-track {
     height: 4px;
@@ -325,6 +325,111 @@
   .chat-copy.copied { background: rgba(34, 197, 94, 0.15); }
   .chat-copy.copied .label { color: var(--focus-color); }
 
+  .status-editor {
+    margin-top: 8px;
+    padding: 10px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+  }
+
+  .status-editor-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+
+  .status-editor-title {
+    font-size: 0.58rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-secondary);
+  }
+
+  .status-editor-meta {
+    font-size: 0.55rem;
+    color: var(--text-muted);
+  }
+
+  .status-editor-input,
+  .status-editor-duration {
+    width: 100%;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-primary);
+    padding: 8px 10px;
+    font: inherit;
+  }
+
+  .status-editor-input {
+    min-height: 62px;
+    resize: vertical;
+    margin-bottom: 8px;
+  }
+
+  .status-editor-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+
+  .status-editor-label {
+    min-width: 78px;
+    font-size: 0.55rem;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+  }
+
+  .status-editor-help,
+  .status-editor-feedback {
+    font-size: 0.55rem;
+    color: var(--text-muted);
+  }
+
+  .status-editor-actions {
+    display: flex;
+    gap: 6px;
+    margin: 8px 0 6px;
+  }
+
+  .status-editor-btn {
+    flex: 1;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 7px 10px;
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-primary);
+    font: inherit;
+    font-size: 0.62rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .status-editor-btn.primary {
+    background: rgba(34, 197, 94, 0.16);
+    border-color: rgba(34, 197, 94, 0.24);
+    color: var(--focus-color);
+  }
+
+  .status-editor-btn.danger {
+    background: rgba(239, 68, 68, 0.14);
+    border-color: rgba(239, 68, 68, 0.22);
+    color: var(--danger);
+  }
+
+  .status-editor-btn:disabled,
+  .status-editor-input:disabled,
+  .status-editor-duration:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
   .footer {
     margin-top: 10px;
     padding-top: 8px;
@@ -372,6 +477,9 @@
   </button>
 </div>
 <div class="controls-row2" id="controlsRow2">
+  <button class="ctrl-btn" id="btnResumePrevious" title="Resume Previous Session">
+    <span class="icon">⏪</span> Resume
+  </button>
   <button class="ctrl-btn" id="btnSubTime" title="Subtract Time">
     <span class="icon">−</span> Time
   </button>
@@ -426,6 +534,24 @@
 <div class="chat-copy" id="statusRow" style="display:none" title="Manual status / AFK message">
   <span class="label">Status</span>
   <span class="value" id="statusMessage">--</span>
+</div>
+
+<div class="status-editor" id="statusEditor">
+  <div class="status-editor-head">
+    <span class="status-editor-title">SP Status</span>
+    <span class="status-editor-meta" id="statusEditorMeta">Inactive</span>
+  </div>
+  <textarea class="status-editor-input" id="statusEditorMessage" placeholder="AFK for 5 minutes. Timer keeps running." maxlength="240"></textarea>
+  <div class="status-editor-row">
+    <span class="status-editor-label">Minutes</span>
+    <input class="status-editor-duration" id="statusEditorDuration" type="number" min="0" max="10080" step="1" value="0">
+  </div>
+  <div class="status-editor-help">Set to 0 to keep the message visible until you clear it.</div>
+  <div class="status-editor-actions">
+    <button class="status-editor-btn primary" id="btnStatusApply" type="button">Apply Status</button>
+    <button class="status-editor-btn danger" id="btnStatusClear" type="button">Clear Status</button>
+  </div>
+  <div class="status-editor-feedback" id="statusEditorFeedback"></div>
 </div>
 
 <div id="dailyGoalRow" style="display:none; padding:6px 16px;">
@@ -496,9 +622,16 @@ const btnStartPause = document.getElementById('btnStartPause');
 const btnStartPauseLabel = document.getElementById('btnStartPauseLabel');
 const btnStop = document.getElementById('btnStop');
 const btnSkip = document.getElementById('btnSkip');
+const btnResumePrevious = document.getElementById('btnResumePrevious');
 const btnAddTime = document.getElementById('btnAddTime');
 const btnSubTime = document.getElementById('btnSubTime');
 const btnReset = document.getElementById('btnReset');
+const statusEditorMessage = document.getElementById('statusEditorMessage');
+const statusEditorDuration = document.getElementById('statusEditorDuration');
+const statusEditorMeta = document.getElementById('statusEditorMeta');
+const statusEditorFeedback = document.getElementById('statusEditorFeedback');
+const btnStatusApply = document.getElementById('btnStatusApply');
+const btnStatusClear = document.getElementById('btnStatusClear');
 const footerText = document.getElementById('footerText');
 
 const BADGE_CLASSES = {
@@ -510,12 +643,16 @@ let wsConnected = false;
 let controlActionInFlight = false;
 let wsProbeTimer = null;
 let stateConnected = false;
+let actionRefreshTimers = [];
+let statusDraftDirty = false;
+let statusCommandInFlight = false;
 
 function setControlButtonsBusy(busy) {
   controlActionInFlight = busy;
-  [btnStartPause, btnStop, btnSkip, btnAddTime, btnSubTime, btnReset].forEach(button => {
+  [btnStartPause, btnStop, btnSkip, btnResumePrevious, btnAddTime, btnSubTime, btnReset].forEach(button => {
     button.disabled = busy;
   });
+  syncStatusEditorInteractivity();
 }
 
 function setWsStatus(status) {
@@ -523,10 +660,11 @@ function setWsStatus(status) {
   wsLabel.textContent = status === 'connected' ? 'WS OK' : status === 'connecting' ? 'WS...' : 'WS X';
   wsConnected = (status === 'connected');
   if (!controlActionInFlight) {
-    [btnStartPause, btnStop, btnSkip, btnAddTime, btnSubTime, btnReset].forEach(button => {
+    [btnStartPause, btnStop, btnSkip, btnResumePrevious, btnAddTime, btnSubTime, btnReset].forEach(button => {
       button.disabled = !wsConnected;
     });
   }
+  syncStatusEditorInteractivity();
 }
 
 function scheduleWsProbe() {
@@ -635,6 +773,244 @@ function setStateStatus(status, detail) {
   } else {
     footerText.textContent = 'v5.4.1 · Hotkeys or buttons to control';
   }
+}
+
+async function refreshStateSnapshot() {
+  try {
+    lastState = await loadStateJson();
+    consecutiveFetchFailures = 0;
+    setStateStatus('connected', wsConnected ? 'Live state + dock controls connected' : `Read-only mode · ${preferredStateUrl}`);
+    update(lastState);
+    return;
+  } catch (error) {
+    try {
+      lastState = await loadStateViaObsSources();
+      consecutiveFetchFailures = 0;
+      setStateStatus('connected', 'State file unavailable · using OBS source fallback');
+      update(lastState);
+      return;
+    } catch (fallbackError) {
+      consecutiveFetchFailures += 1;
+      setStateStatus('disconnected', `State file unavailable · ${preferredStateUrl || 'session_state.json'}`);
+      if (consecutiveFetchFailures >= 2) {
+        lastState = null;
+        update(null);
+      } else {
+        update(lastState);
+      }
+    }
+  }
+}
+
+function scheduleActionStateRefresh(delayMs = 120) {
+  const timerId = setTimeout(() => {
+    actionRefreshTimers = actionRefreshTimers.filter(id => id !== timerId);
+    refreshStateSnapshot().catch(() => {});
+  }, delayMs);
+  actionRefreshTimers.push(timerId);
+}
+
+function applyOptimisticActionState(hotkeyName) {
+  const baseState = lastState ? { ...lastState } : null;
+  if (!baseState) return;
+
+  if (hotkeyName === 'session_pulse_start_pause') {
+    if (baseState.is_running && !baseState.is_paused) {
+      baseState.is_paused = true;
+    } else {
+      baseState.is_running = true;
+      baseState.is_paused = false;
+    }
+  } else if (hotkeyName === 'session_pulse_stop' || hotkeyName === 'session_pulse_reset') {
+    baseState.is_running = false;
+    baseState.is_paused = false;
+  } else if (hotkeyName === 'session_pulse_resume_previous') {
+    baseState.is_running = true;
+    baseState.is_paused = false;
+  } else {
+    syncStatusEditorFromState(null);
+    return;
+  }
+
+  lastState = baseState;
+  update(lastState);
+}
+
+function setStatusEditorFeedback(message, isError = false) {
+  statusEditorFeedback.textContent = message || '';
+  statusEditorFeedback.style.color = isError ? 'var(--danger)' : 'var(--text-muted)';
+}
+
+function setStatusEditorBusy(busy) {
+  statusCommandInFlight = busy;
+  syncStatusEditorInteractivity();
+}
+
+function syncStatusEditorInteractivity() {
+  const disabled = !wsConnected || controlActionInFlight || statusCommandInFlight;
+  statusEditorMessage.disabled = disabled;
+  statusEditorDuration.disabled = disabled;
+  btnStatusApply.disabled = disabled;
+  btnStatusClear.disabled = disabled;
+}
+
+function updateStatusEditorMeta(state) {
+  if (!state) {
+    statusEditorMeta.textContent = 'State unavailable';
+    return;
+  }
+
+  if (state.status_active && state.status_message) {
+    if (state.status_until_epoch && state.status_until_epoch > 0) {
+      const remainingSeconds = Math.max(0, state.status_until_epoch - Math.floor(Date.now() / 1000));
+      const remainingMinutes = Math.ceil(remainingSeconds / 60);
+      statusEditorMeta.textContent = remainingMinutes > 0 ? `Active · clears in ${remainingMinutes}m` : 'Active · clears soon';
+    } else {
+      statusEditorMeta.textContent = 'Active · until cleared';
+    }
+  } else {
+    statusEditorMeta.textContent = 'Inactive';
+  }
+}
+
+function syncStatusEditorFromState(state) {
+  updateStatusEditorMeta(state);
+  if (!state || statusDraftDirty || statusCommandInFlight) return;
+
+  statusEditorMessage.value = state.status_message || '';
+  if (state.status_active && state.status_until_epoch && state.status_until_epoch > 0) {
+    const remainingSeconds = Math.max(0, state.status_until_epoch - Math.floor(Date.now() / 1000));
+    statusEditorDuration.value = Math.ceil(remainingSeconds / 60);
+  } else {
+    statusEditorDuration.value = 0;
+  }
+}
+
+function buildStatusCommandPayload(command, message, durationMinutes) {
+  return JSON.stringify({
+    command,
+    message: message || '',
+    duration_minutes: durationMinutes || 0,
+    nonce: nextRequestId()
+  });
+}
+
+function getRequestedStatusDuration() {
+  const value = parseInt(statusEditorDuration.value, 10);
+  if (Number.isNaN(value)) return 0;
+  return Math.max(0, Math.min(value, 10080));
+}
+
+async function sendStatusCommand(command, message, durationMinutes) {
+  setStatusEditorBusy(true);
+  try {
+    await ensureControlBridgeInput();
+    await callObs('SetInputSettings', {
+      inputName: 'SP Control',
+      inputSettings: {
+        text: buildStatusCommandPayload(command, message, durationMinutes)
+      },
+      overlay: true
+    });
+
+    if (lastState) {
+      const nextState = { ...lastState };
+      if (command === 'show_status') {
+        nextState.status_active = true;
+        nextState.status_message = message;
+        nextState.status_until_epoch = durationMinutes > 0
+          ? Math.floor(Date.now() / 1000) + (durationMinutes * 60)
+          : 0;
+      } else {
+        nextState.status_active = false;
+        nextState.status_message = '';
+        nextState.status_until_epoch = 0;
+      }
+      lastState = nextState;
+      update(lastState);
+    }
+
+    statusDraftDirty = false;
+    setStatusEditorFeedback(command === 'show_status' ? 'Status updated' : 'Status cleared');
+    scheduleActionStateRefresh(90);
+    scheduleActionStateRefresh(260);
+  } catch (error) {
+    setStatusEditorFeedback(error.message || 'Unable to update status', true);
+  } finally {
+    setStatusEditorBusy(false);
+  }
+}
+
+function isMissingControlBridgeError(error) {
+  const text = String(error && error.message ? error.message : error || '').toLowerCase();
+  return (
+    text.includes('sp control') ||
+    text.includes('no source was found by the name') ||
+    text.includes('no input was found by the name') ||
+    text.includes('within the canvas')
+  );
+}
+
+async function createControlBridgeInput() {
+  const sceneList = await callObs('GetSceneList');
+  const sceneName = sceneList && (sceneList.currentProgramSceneName
+    || sceneList.currentPreviewSceneName
+    || (Array.isArray(sceneList.scenes) && sceneList.scenes[0] && sceneList.scenes[0].sceneName));
+
+  if (!sceneName) {
+    throw new Error('Unable to resolve the current OBS scene for SP Control');
+  }
+
+  let candidateInputKinds = [];
+  try {
+    const kindList = await callObs('GetInputKindList', { unversioned: false });
+    const inputKinds = Array.isArray(kindList && kindList.inputKinds) ? kindList.inputKinds : [];
+    const preferred = inputKinds.filter(kind => /^text_/i.test(kind));
+    candidateInputKinds = preferred;
+  } catch (error) {
+    // Fall back to common kinds if the capability probe is unavailable.
+  }
+
+  if (!candidateInputKinds.length) {
+    candidateInputKinds = ['text_gdiplus', 'text_ft2_source', 'text_gdiplus_v2', 'text_ft2_source_v2'];
+  }
+
+  let lastError = null;
+
+  for (const inputKind of candidateInputKinds) {
+    try {
+      await callObs('CreateInput', {
+        sceneName,
+        inputName: 'SP Control',
+        inputKind,
+        inputSettings: {
+          text: ''
+        },
+        sceneItemEnabled: false
+      });
+      return;
+    } catch (error) {
+      lastError = error;
+      const message = String(error && error.message ? error.message : error || '').toLowerCase();
+      if (message.includes('already exists')) {
+        return;
+      }
+    }
+  }
+
+  const kindSummary = candidateInputKinds.join(', ') || 'none';
+  throw lastError || new Error(`Unable to create SP Control using supported text kinds: ${kindSummary}`);
+}
+
+async function ensureControlBridgeInput() {
+  try {
+    await callObs('GetInputSettings', { inputName: 'SP Control' });
+    return;
+  } catch (error) {
+    if (!isMissingControlBridgeError(error)) throw error;
+  }
+
+  await createControlBridgeInput();
 }
 
 async function loadStateJson() {
@@ -858,14 +1234,74 @@ function parseProgressText(progressText) {
   return Math.round((filled / total) * 100);
 }
 
+function parseControlBridgeState(controlText) {
+  if (!controlText) return null;
+
+  try {
+    const payload = JSON.parse(controlText);
+    if (!payload || payload.kind !== 'state') return null;
+    return payload;
+  } catch (error) {
+    return null;
+  }
+}
+
+function buildFallbackChatStatus(sessionText, timerText, countText, paused) {
+  const parts = [];
+  if (sessionText) parts.push(String(sessionText).trim());
+  if (timerText) parts.push(String(timerText).trim());
+  if (countText) parts.push(`(${String(countText).trim()})`);
+  let summary = parts.join(' ');
+  if (paused && summary && !/\bpaused\b/i.test(summary)) {
+    summary += ' [Paused]';
+  }
+  return summary || '--';
+}
+
 async function loadStateViaObsSources() {
-  const [timerText, sessionText, countText, progressText, statusText] = await Promise.all([
+  const [controlText, timerText, sessionText, countText, progressText, statusText] = await Promise.all([
+    getObsInputText('SP Control').catch(() => ''),
     getObsInputText('SP Timer').catch(() => ''),
     getObsInputText('SP Session').catch(() => ''),
     getObsInputText('SP Count').catch(() => ''),
     getObsInputText('SP Progress').catch(() => ''),
     getObsInputText('SP Status').catch(() => '')
   ]);
+
+  const controlState = parseControlBridgeState(controlText);
+  if (controlState) {
+    const totalTime = Number(controlState.total_time) || 0;
+    const currentTime = Number(controlState.current_time) || 0;
+    return {
+      is_running: !!controlState.is_running,
+      is_paused: !!controlState.is_paused,
+      session_type: controlState.session_type || (controlState.is_running ? 'Focus' : 'Ready'),
+      current_time: currentTime,
+      total_time: totalTime,
+      elapsed_seconds: Math.max(0, totalTime - currentTime),
+      progress_percent: Number(controlState.progress_percent) || 0,
+      completed_focus_sessions: Number(controlState.completed_focus_sessions) || 0,
+      goal_sessions: Number(controlState.goal_sessions) || 0,
+      total_focus_seconds: Number(controlState.total_focus_seconds) || 0,
+      cycle_count: Number(controlState.cycle_count) || 0,
+      stream_duration: Number(controlState.stream_duration) || 0,
+      timer_mode: controlState.timer_mode || 'pomodoro',
+      custom_segment_name: controlState.custom_segment_name || '',
+      custom_segment_index: Number(controlState.custom_segment_index) || 0,
+      custom_segment_count: Number(controlState.custom_segment_count) || 0,
+      is_overtime: !!controlState.is_overtime,
+      overtime_seconds: Number(controlState.overtime_seconds) || 0,
+      next_session_type: controlState.next_session_type || '',
+      break_suggestion: controlState.break_suggestion || '',
+      show_transition: !!controlState.show_transition,
+      transition_message: controlState.transition_message || '',
+      chat_status_line: controlState.chat_status_line || buildFallbackChatStatus(sessionText, timerText, countText, !!controlState.is_paused),
+      status_active: !!controlState.status_active,
+      status_message: controlState.status_message || String(statusText || '').trim(),
+      status_until_epoch: Number(controlState.status_until_epoch) || 0,
+      ends_at: controlState.ends_at || ''
+    };
+  }
 
   const currentTime = parseTimerText(timerText);
   const sessionType = inferSessionType(sessionText);
@@ -897,9 +1333,10 @@ async function loadStateViaObsSources() {
     cycle_count: 0,
     stream_duration: 0,
     timer_mode: sessionType === 'Countdown' ? 'countdown' : sessionType === 'Stopwatch' ? 'stopwatch' : 'pomodoro',
-    chat_status_line: statusMessage || sessionText || '--',
+    chat_status_line: buildFallbackChatStatus(sessionText, timerText, countText, paused),
     status_active: statusMessage !== '',
-    status_message: statusMessage
+    status_message: statusMessage,
+    status_until_epoch: 0
   };
 }
 
@@ -922,6 +1359,9 @@ async function triggerHotkey(hotkeyName) {
   try {
     await callObs('TriggerHotkeyByName', { hotkeyName });
     setWsStatus('connected');
+    applyOptimisticActionState(hotkeyName);
+    scheduleActionStateRefresh(90);
+    scheduleActionStateRefresh(260);
   } catch (error) {
     console.warn('[Dock] Hotkey trigger failed:', hotkeyName, error.message);
     setWsStatus('disconnected');
@@ -937,9 +1377,29 @@ wsIndicator.addEventListener('click', () => {
 btnStartPause.addEventListener('click', () => triggerHotkey('session_pulse_start_pause'));
 btnStop.addEventListener('click', () => triggerHotkey('session_pulse_stop'));
 btnSkip.addEventListener('click', () => triggerHotkey('session_pulse_skip'));
+btnResumePrevious.addEventListener('click', () => triggerHotkey('session_pulse_resume_previous'));
 btnAddTime.addEventListener('click', () => triggerHotkey('session_pulse_add_time'));
 btnSubTime.addEventListener('click', () => triggerHotkey('session_pulse_sub_time'));
 btnReset.addEventListener('click', () => triggerHotkey('session_pulse_reset'));
+statusEditorMessage.addEventListener('input', () => {
+  statusDraftDirty = true;
+  setStatusEditorFeedback('');
+});
+statusEditorDuration.addEventListener('input', () => {
+  statusDraftDirty = true;
+  setStatusEditorFeedback('');
+});
+btnStatusApply.addEventListener('click', () => {
+  const message = statusEditorMessage.value.trim();
+  if (!message) {
+    setStatusEditorFeedback('Enter a message before applying.', true);
+    return;
+  }
+  sendStatusCommand('show_status', message, getRequestedStatusDuration());
+});
+btnStatusClear.addEventListener('click', () => {
+  sendStatusCommand('clear_status', '', 0);
+});
 
 // ── Chat Copy ──
 chatCopyEl.addEventListener('click', () => {
@@ -996,6 +1456,7 @@ function update(state) {
     modeBadge.textContent = '--';
     chatStatusEl.textContent = '--';
     document.getElementById('statusRow').style.display = 'none';
+    btnResumePrevious.disabled = !wsConnected || controlActionInFlight;
     btnStartPauseLabel.textContent = 'Start';
     btnStartPause.querySelector('.icon').textContent = '▶';
     return;
@@ -1026,6 +1487,8 @@ function update(state) {
     btnStartPauseLabel.textContent = 'Start';
     btnStartPause.querySelector('.icon').textContent = '▶';
   }
+
+  btnResumePrevious.disabled = controlActionInFlight || !wsConnected || is_running;
 
   // Status dot
   if (overtime) {
@@ -1157,6 +1620,8 @@ function update(state) {
     statusRow.style.display = 'none';
   }
 
+  syncStatusEditorFromState(state);
+
   // Daily goal
   const goalRow = document.getElementById('dailyGoalRow');
   const goalFill = document.getElementById('dailyGoalFill');
@@ -1191,26 +1656,7 @@ async function poll() {
   if (pollStopped || pollInFlight) return;
   pollInFlight = true;
   try {
-    consecutiveFetchFailures = 0;
-    lastState = await loadStateJson();
-    setStateStatus('connected', wsConnected ? 'Live state + dock controls connected' : `Read-only mode · ${preferredStateUrl}`);
-    update(lastState);
-  } catch (e) {
-    try {
-      lastState = await loadStateViaObsSources();
-      consecutiveFetchFailures = 0;
-      setStateStatus('connected', 'State file unavailable · using OBS source fallback');
-      update(lastState);
-    } catch (fallbackError) {
-      consecutiveFetchFailures += 1;
-      setStateStatus('disconnected', `State file unavailable · ${preferredStateUrl || 'session_state.json'}`);
-      if (consecutiveFetchFailures >= 2) {
-        lastState = null;
-        update(null);
-      } else {
-        update(lastState);
-      }
-    }
+    await refreshStateSnapshot();
   } finally {
     pollInFlight = false;
     if (!pollStopped) {
@@ -1218,13 +1664,14 @@ async function poll() {
     }
   }
 }
-
 setStateStatus('connecting', 'Connecting to session_state.json...');
 poll();
 window.addEventListener('beforeunload', () => {
   pollStopped = true;
   if (pollTimer) clearTimeout(pollTimer);
   if (wsProbeTimer) clearTimeout(wsProbeTimer);
+  actionRefreshTimers.forEach(timerId => clearTimeout(timerId));
+  actionRefreshTimers = [];
 });
 
 // ── Initialize WebSocket ──
@@ -1233,3 +1680,5 @@ connectWebSocket().finally(scheduleWsProbe);
 </script>
 </body>
 </html>
+
+

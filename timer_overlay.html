@@ -133,6 +133,20 @@
     text-shadow: 0 1px 4px rgba(0,0,0,0.3);
   }
 
+  .info-line {
+    max-width: 150px;
+    font-size: 0.56rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+    opacity: 0.78;
+    margin-top: 2px;
+    text-align: center;
+    text-shadow: 0 1px 4px rgba(0,0,0,0.35);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
   .transition-msg {
     position: absolute;
     bottom: 12%;
@@ -197,6 +211,7 @@
     <div class="session-label" id="label">Ready</div>
     <div class="stats" id="stats"></div>
     <div class="next-up" id="nextUp"></div>
+    <div class="info-line" id="infoLine"></div>
   </div>
   <div class="transition-msg" id="transition"></div>
 </div>
@@ -208,6 +223,8 @@ const THEME = params.get('theme') || 'default';
 const SIZE = parseInt(params.get('size')) || 220;
 const SHOW_STATS = params.get('showStats') !== 'false';
 const SHOW_NEXT = params.get('showNext') !== 'false';
+const SHOW_CHAT = params.get('showChat') === 'true';
+const SHOW_STATUS = params.get('showStatus') !== 'false';
 const CUSTOM_FONT = params.get('font');
 
 // Apply theme
@@ -242,6 +259,7 @@ const timeEl = document.getElementById('time');
 const labelEl = document.getElementById('label');
 const statsEl = document.getElementById('stats');
 const nextUpEl = document.getElementById('nextUp');
+const infoLineEl = document.getElementById('infoLine');
 const transEl = document.getElementById('transition');
 const glowEl = document.getElementById('glow');
 const container = document.getElementById('container');
@@ -286,6 +304,7 @@ function update(state) {
     labelEl.textContent = 'Offline';
     statsEl.textContent = '';
     nextUpEl.textContent = '';
+    infoLineEl.textContent = '';
     ring.style.strokeDashoffset = CIRCUMFERENCE;
     glowEl.classList.remove('active');
     return;
@@ -296,7 +315,8 @@ function update(state) {
           show_transition, transition_message, timer_mode,
           custom_segment_name, custom_segment_index, custom_segment_count,
           is_overtime, overtime_seconds, next_session_type, next_session_in,
-          sessions_remaining, break_suggestion, stream_duration, ends_at } = state;
+          sessions_remaining, break_suggestion, stream_duration, ends_at,
+          chat_status_line, status_active, status_message } = state;
 
   const mode = timer_mode || 'pomodoro';
   const overtime = is_overtime || false;
@@ -378,6 +398,14 @@ function update(state) {
     nextUpEl.textContent = nextText;
   } else {
     nextUpEl.textContent = '';
+  }
+
+  if (SHOW_STATUS && status_active && status_message) {
+    infoLineEl.textContent = status_message;
+  } else if (SHOW_CHAT && chat_status_line) {
+    infoLineEl.textContent = chat_status_line;
+  } else {
+    infoLineEl.textContent = '';
   }
 
   // Transition message

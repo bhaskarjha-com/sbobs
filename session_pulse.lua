@@ -165,11 +165,13 @@ local background_music_source_name = ""
 local alert_source_name = ""
 local status_state = {
     source_name = "",
+    control_source_name = "SP Control",
     message_input = "",
     duration_minutes = 0,
     current_message = "",
     active = false,
-    until_epoch = 0
+    until_epoch = 0,
+    last_overlay_command_nonce = ""
 }
 
 -- Session messages
@@ -215,6 +217,7 @@ local hotkey_skip = obs.OBS_INVALID_HOTKEY_ID
 local hotkey_add_time = obs.OBS_INVALID_HOTKEY_ID
 local hotkey_sub_time = obs.OBS_INVALID_HOTKEY_ID
 local hotkey_reset = obs.OBS_INVALID_HOTKEY_ID
+hotkey_resume_previous = obs.OBS_INVALID_HOTKEY_ID
 
 -- Queued control actions
 local pending_control_actions = {}
@@ -477,6 +480,8 @@ end
 -- delete_state_file, apply_saved_state
 -- Debugging: Check `state_dirty` if files aren't writing, or JSON parser if corrupt.
 ------------------------------------------------------------------------
+local update_control_bridge_state
+
 local function get_next_session_type()
     if timer_mode ~= "pomodoro" then return "" end
     if session_type == "Focus" then
@@ -655,6 +660,10 @@ local function save_state(force)
 
     state_dirty = false
     last_save_time = now
+
+    if update_control_bridge_state then
+        update_control_bridge_state(true)
+    end
 end
 
 local function load_state()
@@ -869,6 +878,24 @@ local function update_obs_source_text(source_name, text)
         obs.obs_data_release(settings)
         obs.obs_source_release(source)
     end
+end
+
+function get_obs_source_text(source_name)
+    if not source_name or source_name == "" then return "" end
+    local source = obs.obs_get_source_by_name(source_name)
+    if not source then return "" end
+
+    local text = ""
+    local ok, settings = pcall(function()
+        return obs.obs_source_get_settings(source)
+    end)
+    if ok and settings then
+        text = obs.obs_data_get_string(settings, "text") or ""
+        obs.obs_data_release(settings)
+    end
+
+    obs.obs_source_release(source)
+    return text
 end
 
 local function set_source_enabled_by_name(source_name, enabled)
@@ -1315,9 +1342,14 @@ update_display_texts = function()
     end
 
     -- Session message
-    local message = show_transition and transition_message or get_session_message()
+    local message
+    if not is_running and not show_transition then
+        message = "Ready"
+    else
+        message = show_transition and transition_message or get_session_message()
+    end
 
-    if timer_mode == "pomodoro" and session_type ~= "Focus" and
+    if is_running and timer_mode == "pomodoro" and session_type ~= "Focus" and
        not show_transition and #parsed_suggestions > 0 then
         local suggestion = parsed_suggestions[suggestion_index]
         if suggestion then
@@ -1663,7 +1695,209 @@ end
 ------------------------------------------------------------------------
 local function persist_status_settings()
     if not quick_setup_settings then return end
+    obs.obs_data_set_string(quick_setup_settings, "status_message_input", status_state.message_input or "")
+    obs.obs_data_set_int(quick_setup_settings, "status_duration_minutes", status_state.duration_minutes or 0)
     obs.obs_data_set_string(quick_setup_settings, "status_current_message", status_state.current_message or "")
+end
+
+function json_string_value(text, key)
+    local _, value_start = text:find('"' .. key .. '"%s*:%s*"', 1)
+    if not value_start then return nil end
+
+    local result = {}
+    local i = value_start + 1
+    while i <= #text do
+        local ch = text:sub(i, i)
+        if ch == '"' then
+            return table.concat(result)
+        end
+        if ch == "\\" then
+            local next_ch = text:sub(i + 1, i + 1)
+            if next_ch == "n" then
+                table.insert(result, "\n")
+            elseif next_ch == "r" then
+                table.insert(result, "\r")
+            elseif next_ch == "t" then
+                table.insert(result, "\t")
+            elseif next_ch == '"' or next_ch == "\\" or next_ch == "/" then
+                table.insert(result, next_ch)
+            else
+                table.insert(result, next_ch)
+            end
+            i = i + 2
+        else
+            table.insert(result, ch)
+            i = i + 1
+        end
+    end
+
+    return nil
+end
+
+function json_number_value(text, key)
+    local value = text:match('"' .. key .. '"%s*:%s*(-?%d+)')
+    return tonumber(value)
+end
+
+function build_control_bridge_state_json()
+    local now = os.time()
+    local display_time = compute_current_time()
+    local total = session_target_duration
+    if not is_running or total == 0 then
+        total = get_duration_for_session(session_type)
+    end
+
+    local seg_name = ""
+    if timer_mode == "custom" and custom_segments[custom_segment_index] then
+        seg_name = custom_segments[custom_segment_index].name
+    end
+
+    local completed_for_display = get_effective_completed_focus_sessions()
+    local next_type = get_next_session_type()
+
+    local stream_dur = 0
+    if stream_start_time > 0 then
+        stream_dur = now - stream_start_time
+    end
+
+    local suggestion_text = ""
+    if suggestion_index > 0 and suggestion_index <= #parsed_suggestions then
+        suggestion_text = parsed_suggestions[suggestion_index]
+    end
+
+    local chat_status = ""
+    if is_running then
+        if is_overtime then
+            chat_status = string.format("%s +%s", session_type, format_time(overtime_seconds))
+        elseif timer_mode == "stopwatch" then
+            chat_status = "Stopwatch " .. format_time(display_time)
+        elseif timer_mode == "pomodoro" then
+            chat_status = string.format("%s %s (%d/%d)",
+                session_type, format_time(display_time),
+                completed_for_display, goal_sessions)
+        elseif timer_mode == "custom" and seg_name ~= "" then
+            chat_status = string.format("%s %s (%d/%d)",
+                seg_name, format_time(display_time),
+                custom_segment_index, #custom_segments)
+        else
+            chat_status = string.format("%s %s", session_type, format_time(display_time))
+        end
+        if is_paused then
+            chat_status = chat_status .. " [Paused]"
+        end
+    end
+
+    local progress_pct = 0
+    if total > 0 then
+        progress_pct = math.min(100, math.floor(((total - display_time) / total) * 100))
+    end
+    if is_overtime then
+        progress_pct = 100
+    end
+
+    local ends_at = ""
+    if is_running and not is_paused and not is_overtime and timer_mode ~= "stopwatch" then
+        ends_at = os.date("%H:%M", now + display_time)
+    end
+
+    local active_status_message = ""
+    if status_state.active and status_state.current_message ~= "" then
+        active_status_message = status_state.current_message
+    end
+
+    return string.format(
+        '{"kind":"state","is_running":%s,"is_paused":%s,"session_type":"%s","current_time":%d,"total_time":%d,"progress_percent":%d,"completed_focus_sessions":%d,"goal_sessions":%d,"total_focus_seconds":%d,"cycle_count":%d,"stream_duration":%d,"timer_mode":"%s","chat_status_line":"%s","status_active":%s,"status_message":"%s","status_until_epoch":%d,"is_overtime":%s,"overtime_seconds":%d,"next_session_type":"%s","break_suggestion":"%s","ends_at":"%s","show_transition":%s,"transition_message":"%s","custom_segment_name":"%s","custom_segment_index":%d,"custom_segment_count":%d,"timestamp":%d}',
+        tostring(is_running),
+        tostring(is_paused),
+        json_escape(session_type),
+        display_time,
+        total,
+        progress_pct,
+        completed_for_display,
+        goal_sessions,
+        total_focus_seconds,
+        cycle_count,
+        stream_dur,
+        json_escape(timer_mode),
+        json_escape(chat_status),
+        tostring(status_state.active and active_status_message ~= ""),
+        json_escape(active_status_message),
+        status_state.until_epoch or 0,
+        tostring(is_overtime),
+        overtime_seconds or 0,
+        json_escape(next_type),
+        json_escape(suggestion_text),
+        json_escape(ends_at),
+        tostring(show_transition),
+        json_escape(transition_message),
+        json_escape(seg_name),
+        custom_segment_index or 1,
+        #custom_segments,
+        now
+    )
+end
+
+update_control_bridge_state = function(force)
+    if not status_state.control_source_name or status_state.control_source_name == "" then return end
+
+    if not force then
+        local raw_value = get_obs_source_text(status_state.control_source_name)
+        if raw_value and raw_value ~= "" then
+            local raw_kind = json_string_value(raw_value, "kind")
+            local raw_command = json_string_value(raw_value, "command")
+            if raw_kind == "command" or raw_command == "show_status" or raw_command == "clear_status" then
+                return
+            end
+        end
+    end
+
+    update_obs_source_text(status_state.control_source_name, build_control_bridge_state_json())
+end
+
+function clear_overlay_control_command()
+    update_obs_source_text(status_state.control_source_name, "")
+end
+
+function process_overlay_control_command()
+    local raw_command = get_obs_source_text(status_state.control_source_name)
+    if not raw_command or raw_command == "" then return false end
+
+    local command = json_string_value(raw_command, "command")
+    local nonce = json_string_value(raw_command, "nonce") or ""
+    if nonce ~= "" and nonce == status_state.last_overlay_command_nonce then
+        clear_overlay_control_command()
+        return false
+    end
+
+    local handled = false
+    if command == "show_status" then
+        local message = json_string_value(raw_command, "message") or ""
+        local duration_minutes = json_number_value(raw_command, "duration_minutes") or 0
+        message = message:gsub("^%s+", ""):gsub("%s+$", "")
+        duration_minutes = math.max(0, math.min(duration_minutes, 10080))
+
+        if message ~= "" then
+            status_state.message_input = message
+            status_state.duration_minutes = duration_minutes
+            persist_status_settings()
+            if not has_pending_control_action("show_status_message") then
+                queue_control_action("show_status_message", "overlay")
+            end
+            handled = true
+        end
+    elseif command == "clear_status" then
+        if not has_pending_control_action("clear_status_message") then
+            queue_control_action("clear_status_message", "overlay")
+        end
+        handled = true
+    end
+
+    if nonce ~= "" then
+        status_state.last_overlay_command_nonce = nonce
+    end
+
+    clear_overlay_control_command()
+    return handled
 end
 
 local function show_status_message()
@@ -2212,6 +2446,12 @@ local function on_frontend_event(event)
         if enable_chapter_markers and is_running then
             add_chapter_marker()
         end
+    elseif obs.OBS_FRONTEND_EVENT_SCENE_CHANGED and event == obs.OBS_FRONTEND_EVENT_SCENE_CHANGED then
+        if should_ensure_overlay_control_source() then
+            ensure_overlay_control_source()
+            ensure_overlay_control_scene_item()
+            update_control_bridge_state(true)
+        end
     end
 end
 
@@ -2275,6 +2515,47 @@ function get_or_create_source(name, source_id, settings)
     return nil, false
 end
 
+function ensure_overlay_control_source()
+    local text_id = get_text_source_id()
+    local settings = obs.obs_data_create()
+    obs.obs_data_set_string(settings, "text", "")
+
+    local font = obs.obs_data_create()
+    obs.obs_data_set_string(font, "face", "Arial")
+    obs.obs_data_set_int(font, "size", 1)
+    obs.obs_data_set_int(font, "flags", 0)
+    obs.obs_data_set_obj(settings, "font", font)
+    obs.obs_data_release(font)
+    obs.obs_data_set_int(settings, "color", 0xFFFFFF)
+
+    local source, was_created = get_or_create_source(status_state.control_source_name, text_id, settings)
+    obs.obs_data_release(settings)
+
+    if source then
+        obs.obs_source_release(source)
+    end
+
+    return was_created
+end
+
+function should_ensure_overlay_control_source()
+    local overlay_source = obs.obs_get_source_by_name("SP Overlay")
+    if overlay_source then
+        obs.obs_source_release(overlay_source)
+        return true
+    end
+
+    if status_state.source_name and status_state.source_name ~= "" then
+        local status_source = obs.obs_get_source_by_name(status_state.source_name)
+        if status_source then
+            obs.obs_source_release(status_source)
+            return true
+        end
+    end
+
+    return false
+end
+
 function add_source_obj_to_scene(scene, source, x, y)
     if not scene or not source then return end
 
@@ -2325,6 +2606,44 @@ function populate_scene(scene, source_list, overlay_source, background_sources, 
     if alert_source then
         add_source_obj_to_scene(scene, alert_source, 0, 0)
     end
+end
+
+function ensure_overlay_control_scene_item()
+    local control_source = obs.obs_get_source_by_name(status_state.control_source_name)
+    local ensured = false
+
+    if not control_source then return false end
+
+    if type(obs.obs_frontend_get_scenes) == "function" then
+        local scene_sources = obs.obs_frontend_get_scenes()
+        if scene_sources then
+            for _, scene_source in ipairs(scene_sources) do
+                local scene = obs.obs_scene_from_source(scene_source)
+                if scene then
+                    add_source_obj_to_scene(scene, control_source, -10000, -10000)
+                    ensured = true
+                end
+            end
+            if type(obs.source_list_release) == "function" then
+                obs.source_list_release(scene_sources)
+            end
+        end
+    end
+
+    if not ensured and type(obs.obs_frontend_get_current_scene) == "function" then
+        local scene_source = obs.obs_frontend_get_current_scene()
+        if scene_source then
+            local scene = obs.obs_scene_from_source(scene_source)
+            if scene then
+                add_source_obj_to_scene(scene, control_source, -10000, -10000)
+                ensured = true
+            end
+            obs.obs_source_release(scene_source)
+        end
+    end
+
+    obs.obs_source_release(control_source)
+    return ensured
 end
 
 local function add_sessionpulse_sources_to_active_scene(source_list, overlay_source, background_sources, music_source, alert_source)
@@ -2563,6 +2882,16 @@ quick_setup = function(props, p)
             log("Quick Setup: Failed to create '" .. spec.name .. "'")
         end
     end
+
+    if ensure_overlay_control_source() then
+        created_count = created_count + 1
+        log("Quick Setup: Created '" .. status_state.control_source_name .. "'")
+    else
+        skipped_count = skipped_count + 1
+        log("Quick Setup: '" .. status_state.control_source_name .. "' already exists")
+    end
+    ensure_overlay_control_scene_item()
+    update_control_bridge_state(true)
 
     local overlay_path = script_path() .. "timer_overlay.html"
     local overlay_settings = obs.obs_data_create()
@@ -3165,6 +3494,11 @@ function script_update(settings)
     update_automation_config(settings)
     update_source_config(settings)
     harden_sessionpulse_browser_source("SP Overlay")
+    if should_ensure_overlay_control_source() then
+        ensure_overlay_control_source()
+        ensure_overlay_control_scene_item()
+        update_control_bridge_state(true)
+    end
 
     local resumable_state = nil
     if not is_running then
@@ -3200,6 +3534,7 @@ end
 ------------------------------------------------------------------------
 function script_tick(seconds)
     process_volume_fade(seconds)
+    if process_overlay_control_command() then return end
     local controls_processed = process_pending_control_actions()
     if controls_processed > 0 then return end
 
@@ -3248,6 +3583,11 @@ end
 function script_load(settings)
     obs.timer_add(timer_tick, 1000)
     harden_sessionpulse_browser_source("SP Overlay")
+    if should_ensure_overlay_control_source() then
+        ensure_overlay_control_source()
+        ensure_overlay_control_scene_item()
+        update_control_bridge_state(true)
+    end
 
     hotkey_start_pause = obs.obs_hotkey_register_frontend(
         "session_pulse_start_pause", "SessionPulse: Start / Pause", on_hotkey_start_pause)
@@ -3261,6 +3601,13 @@ function script_load(settings)
         "session_pulse_sub_time", "SessionPulse: Subtract Time", on_hotkey_sub_time)
     hotkey_reset = obs.obs_hotkey_register_frontend(
         "session_pulse_reset", "SessionPulse: Reset All", on_hotkey_reset)
+    hotkey_resume_previous = obs.obs_hotkey_register_frontend(
+        "session_pulse_resume_previous",
+        "SessionPulse: Resume Previous Session",
+        function(pressed)
+            if not pressed then return end
+            queue_control_action("resume_previous_session", "hotkey")
+        end)
 
     local function load_hotkey(id, key)
         local a = obs.obs_data_get_array(settings, key)
@@ -3273,6 +3620,7 @@ function script_load(settings)
     load_hotkey(hotkey_add_time, "session_pulse_hotkey_add_time")
     load_hotkey(hotkey_sub_time, "session_pulse_hotkey_sub_time")
     load_hotkey(hotkey_reset, "session_pulse_hotkey_reset")
+    load_hotkey(hotkey_resume_previous, "session_pulse_hotkey_resume_previous")
 
     obs.obs_frontend_add_event_callback(on_frontend_event)
 
@@ -3299,6 +3647,7 @@ function script_save(settings)
     save_hotkey(hotkey_add_time, "session_pulse_hotkey_add_time")
     save_hotkey(hotkey_sub_time, "session_pulse_hotkey_sub_time")
     save_hotkey(hotkey_reset, "session_pulse_hotkey_reset")
+    save_hotkey(hotkey_resume_previous, "session_pulse_hotkey_resume_previous")
 
     if is_running then save_state(true) end
 end
@@ -3317,5 +3666,6 @@ function script_unload()
     obs.obs_hotkey_unregister(hotkey_add_time)
     obs.obs_hotkey_unregister(hotkey_sub_time)
     obs.obs_hotkey_unregister(hotkey_reset)
+    obs.obs_hotkey_unregister(hotkey_resume_previous)
     log("Unloaded")
 end

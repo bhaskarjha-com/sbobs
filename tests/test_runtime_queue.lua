@@ -60,10 +60,19 @@ local function make_mock_obs()
         name = "Current Scene",
         items = {}
     }
+    local alternate_scene = {
+        name = "Alternate Scene",
+        items = {}
+    }
     local current_scene_source = {
         name = "Current Scene",
         id = "scene",
         scene = current_scene
+    }
+    local alternate_scene_source = {
+        name = "Alternate Scene",
+        id = "scene",
+        scene = alternate_scene
     }
 
     function mock.obs_data_create()
@@ -115,6 +124,17 @@ local function make_mock_obs()
         return sources[name]
     end
 
+    function mock.obs_source_create(source_id, name, settings, hotkey_data)
+        local source = {
+            name = name,
+            id = source_id,
+            volume = 1.0,
+            settings = settings or {}
+        }
+        sources[name] = source
+        return source
+    end
+
     function mock.obs_source_release(source)
         counters.source_releases = counters.source_releases + 1
     end
@@ -130,6 +150,16 @@ local function make_mock_obs()
 
     function mock.obs_source_get_name(source)
         return source.name
+    end
+
+    function mock.obs_source_get_settings(source)
+        local copy = {}
+        if source and source.settings then
+            for key, value in pairs(source.settings) do
+                copy[key] = value
+            end
+        end
+        return copy
     end
 
     function mock.obs_source_media_restart(source)
@@ -173,6 +203,10 @@ local function make_mock_obs()
 
     function mock.obs_frontend_get_current_scene()
         return current_scene_source
+    end
+
+    function mock.obs_frontend_get_scenes()
+        return { current_scene_source, alternate_scene_source }
     end
 
     function mock.obs_frontend_add_event_callback(callback)
@@ -231,6 +265,9 @@ local function make_mock_obs()
         item.pos = { x = pos.x, y = pos.y }
     end
 
+    function mock.source_list_release(items)
+    end
+
     function mock.vec2()
         return { x = 0, y = 0 }
     end
@@ -238,6 +275,7 @@ local function make_mock_obs()
     mock.counters = counters
     mock.sources = sources
     mock.current_scene = current_scene
+    mock.alternate_scene = alternate_scene
     return mock
 end
 
@@ -515,7 +553,15 @@ end
 section("Idle State Persistence")
 do
     fake_now = 1000
-    local _, hooks = load_runtime(base_settings)
+    local mock_obs, hooks = load_runtime(base_settings)
+
+    local initial_message_source = mock_obs.sources["MessageText"]
+    local initial_message_text = initial_message_source and initial_message_source.settings and initial_message_source.settings.text or ""
+    local initial_control_source = mock_obs.sources["SP Control"]
+    local initial_control_text = initial_control_source and initial_control_source.settings and initial_control_source.settings.text or ""
+    test("idle state displays Ready before start", initial_message_text == "Ready")
+    test("idle control bridge publishes state JSON", initial_control_text:find('"kind":"state"', 1, true) ~= nil)
+    test("idle control bridge marks timer idle", initial_control_text:find('"is_running":false', 1, true) ~= nil)
 
     hooks.on_start_button_clicked(nil, nil)
     script_tick(0.016)
@@ -523,8 +569,14 @@ do
     script_tick(0.016)
 
     local stopped = hooks.get_runtime_state()
+    local stopped_message_source = mock_obs.sources["MessageText"]
+    local stopped_message_text = stopped_message_source and stopped_message_source.settings and stopped_message_source.settings.text or ""
+    local stopped_control_source = mock_obs.sources["SP Control"]
+    local stopped_control_text = stopped_control_source and stopped_control_source.settings and stopped_control_source.settings.text or ""
     test("stop returns runtime to idle", stopped.is_running == false and stopped.session_type == "Focus")
     test("stop clears completed sessions in runtime", stopped.completed_focus_sessions == 0)
+    test("stop restores Ready message", stopped_message_text == "Ready")
+    test("stop control bridge returns to idle state", stopped_control_text:find('"is_running":false', 1, true) ~= nil)
 end
 
 section("Starting Session Offset")
@@ -554,6 +606,8 @@ do
     test("quick setup places count in current scene", mock_obs.current_scene.items["SP Count"] ~= nil)
     test("quick setup places progress in current scene", mock_obs.current_scene.items["SP Progress"] ~= nil)
     test("quick setup places status in current scene", mock_obs.current_scene.items["SP Status"] ~= nil)
+    test("quick setup places control source in current scene", mock_obs.current_scene.items["SP Control"] ~= nil)
+    test("quick setup places control source in alternate scene", mock_obs.alternate_scene.items["SP Control"] ~= nil)
     test("quick setup places overlay in current scene", mock_obs.current_scene.items["SP Overlay"] ~= nil)
     test("quick setup places background image in current scene", mock_obs.current_scene.items["SP Background Image"] ~= nil)
     test("quick setup places background video in current scene", mock_obs.current_scene.items["SP Background Video"] ~= nil)
@@ -585,6 +639,37 @@ do
     status_source = mock_obs.sources[settings.status_source_name]
     test("status clears when requested", runtime.status_active == false and runtime.status_current_message == "")
     test("status source is disabled after clear", status_source and status_source.enabled == false)
+end
+
+section("Overlay Status Bridge")
+do
+    local mock_obs, hooks = load_runtime(base_settings)
+
+    mock_obs.sources["SP Control"] = {
+        name = "SP Control",
+        id = "text_gdiplus",
+        settings = {
+            text = '{"command":"show_status","message":"AFK for tea","duration_minutes":15,"nonce":"status-1"}'
+        }
+    }
+
+    script_tick(0.016)
+    script_tick(0.016)
+
+    local runtime = hooks.get_runtime_state()
+    local bridge_source = mock_obs.sources["SP Control"]
+    test("overlay command activates status", runtime.status_active == true)
+    test("overlay command stores message", runtime.status_current_message == "AFK for tea")
+    test("overlay command stores duration", runtime.status_until_epoch == fake_now + (15 * 60))
+    test("overlay command restores bridge state payload", bridge_source and bridge_source.settings and bridge_source.settings.text:find('"kind":"state"', 1, true) ~= nil)
+
+    bridge_source.settings.text = '{"command":"clear_status","nonce":"status-2"}'
+    script_tick(0.016)
+    script_tick(0.016)
+
+    runtime = hooks.get_runtime_state()
+    test("overlay clear command disables status", runtime.status_active == false)
+    test("overlay clear command clears message", runtime.status_current_message == "")
 end
 
 section("Status Expiry")

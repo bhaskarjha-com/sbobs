@@ -164,6 +164,20 @@ test("Null returns --:--", formatTime(null) === "--:--");
 // ═══════════════════════════════════════════════════════
 // Duration Formatting (from stats dashboard)
 // ═══════════════════════════════════════════════════════
+section("Dock Fallback State Inference");
+
+function inferFallbackRunning(timerText, sessionText) {
+  const parts = String(timerText || '').trim().split(':').map(part => parseInt(part, 10));
+  const currentTime = parts.some(Number.isNaN)
+    ? null
+    : (parts.length === 2 ? (parts[0] * 60) + parts[1] : parts.length === 3 ? (parts[0] * 3600) + (parts[1] * 60) + parts[2] : null);
+  return currentTime != null && !!sessionText && !/\bready\b/i.test(sessionText);
+}
+
+test("Ready session text is treated as idle", inferFallbackRunning("25:00", "Ready") === false);
+test("Focus text is treated as running", inferFallbackRunning("25:00", "Focus Time") === true);
+test("Paused focus text is still treated as running state", inferFallbackRunning("25:00", "Focus Time (Paused)") === true);
+
 section("Duration Formatting (JS)");
 
 function formatDuration(seconds) {
@@ -280,6 +294,15 @@ for (const page of obsHostedPages) {
     }
   });
 }
+
+const timerDockHtml = fs.readFileSync(path.join(repoRoot, 'timer_dock.html'), 'utf8');
+const timerOverlayHtml = fs.readFileSync(path.join(repoRoot, 'timer_overlay.html'), 'utf8');
+test('timer_dock.html: includes status editor UI', timerDockHtml.includes('statusEditorMessage'));
+test('timer_dock.html: writes status commands through SP Control', timerDockHtml.includes("inputName: 'SP Control'"));
+test('timer_dock.html: parses control bridge state', timerDockHtml.includes("payload.kind !== 'state'"));
+test('timer_dock.html: reads SP Control during OBS fallback', timerDockHtml.includes("getObsInputText('SP Control')"));
+test('timer_dock.html: self-heals missing SP Control input', timerDockHtml.includes("CreateInput") && timerDockHtml.includes("GetSceneList") && timerDockHtml.includes("GetInputKindList"));
+test('timer_overlay.html: does not include overlay status editor UI', !timerOverlayHtml.includes('statusControlToggle'));
 
 section("State Polling Recovery");
 for (const page of statePollingPages) {
