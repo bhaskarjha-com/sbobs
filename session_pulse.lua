@@ -197,6 +197,13 @@ local pending_control_actions = {}
 local pending_runtime_effects = {}
 local scene_switching_deprecation_logged = false
 
+local function get_effective_completed_focus_sessions()
+    if timer_mode == "pomodoro" and not is_running and completed_focus_sessions == 0 and starting_session_offset > 0 then
+        return starting_session_offset
+    end
+    return completed_focus_sessions
+end
+
 ------------------------------------------------------------------------
 -- 4. Helpers
 --
@@ -477,8 +484,9 @@ local function save_state(force)
         seg_name = custom_segments[custom_segment_index].name
     end
 
+    local completed_for_display = get_effective_completed_focus_sessions()
     local next_type = get_next_session_type()
-    local sessions_remaining = math.max(0, goal_sessions - completed_focus_sessions)
+    local sessions_remaining = math.max(0, goal_sessions - completed_for_display)
     local next_in = display_time
     if is_overtime then next_in = 0 end
 
@@ -502,7 +510,7 @@ local function save_state(force)
         elseif timer_mode == "pomodoro" then
             chat_status = string.format("%s %s (%d/%d)",
                 session_type, format_time(display_time),
-                completed_focus_sessions, goal_sessions)
+                completed_for_display, goal_sessions)
         elseif timer_mode == "custom" and seg_name ~= "" then
             chat_status = string.format("%s %s (%d/%d)",
                 seg_name, format_time(display_time),
@@ -576,7 +584,7 @@ local function save_state(force)
         progress_pct,
         json_escape(ends_at),
         cycle_count,
-        completed_focus_sessions,
+        completed_for_display,
         goal_sessions,
         total_focus_seconds,
         tostring(show_transition),
@@ -676,6 +684,12 @@ local function load_state()
     return state
 end
 
+local function refresh_pending_resume_state()
+    local state = load_state()
+    has_pending_resume = state ~= nil and state.is_running == true
+    return state
+end
+
 local function delete_state_file()
     os.remove(get_state_file_path())
     -- Clean up temp file if it exists
@@ -685,6 +699,10 @@ end
 -- Forward declarations (referenced by apply_saved_state before definition)
 local update_display_texts
 local update_background_media
+local update_mic_state
+local update_source_visibility
+local update_volume
+local update_filters
 
 local function apply_saved_state(state)
     session_type = state.session_type or "Focus"
@@ -692,6 +710,9 @@ local function apply_saved_state(state)
     cycle_count = state.cycle_count or 0
     completed_focus_sessions = state.completed_focus_sessions or 0
     total_focus_seconds = state.total_focus_seconds or 0
+    is_overtime = false
+    overtime_seconds = 0
+    overtime_epoch = 0
 
     if state.custom_segment_index and state.timer_mode == "custom" then
         custom_segment_index = state.custom_segment_index
@@ -700,26 +721,29 @@ local function apply_saved_state(state)
     -- Initialize wallclock state for resume
     if state.is_running then
         is_running = true
-        is_paused = true  -- Always resume into paused state for safety
+        is_paused = state.is_paused or false
 
-        if state.is_v4_migration or not state.session_epoch or state.session_epoch == 0 then
-            -- Migrate from v4: synthesize epoch from current_time
-            local dur = get_duration_for_session(session_type)
-            local elapsed = dur - state.current_time
-            session_epoch = os.time() - elapsed
+        -- Resume should continue from the exact saved timer state, not consume time
+        -- while OBS was closed or the machine was offline.
+        if timer_mode == "stopwatch" then
+            session_epoch = os.time() - (state.current_time or 0)
             session_pause_total = 0
-            pause_epoch = os.time()
-            session_target_duration = dur
-            log("v4→v5 migration: synthesized wallclock from " .. format_time(state.current_time))
+            session_target_duration = 0
         else
-            -- v5 resume: restore wallclock state
-            session_epoch = state.session_epoch
-            session_pause_total = state.session_pause_total or 0
-            session_target_duration = state.session_target_duration or get_duration_for_session(session_type)
-            pause_epoch = os.time()  -- We're resuming paused, so pause starts now
+            session_epoch = os.time()
+            session_pause_total = 0
+            session_target_duration = state.current_time or state.session_target_duration or get_duration_for_session(session_type)
         end
 
-        log("Resumed — " .. session_type .. " at " .. format_time(current_time) .. " (paused)")
+        if is_paused then
+            pause_epoch = os.time()
+        else
+            pause_epoch = 0
+            current_time = compute_current_time()
+        end
+
+        log("Resumed from saved state — " .. session_type .. " at " .. format_time(current_time) ..
+            " (" .. (is_paused and "paused" or "running") .. ")")
     else
         is_running = false
         is_paused = false
@@ -737,6 +761,12 @@ local function apply_saved_state(state)
     has_pending_resume = false
     update_display_texts()
     update_background_media()
+    update_mic_state()
+    update_source_visibility()
+    update_volume()
+    update_filters()
+    mark_dirty()
+    save_state(true)
 end
 
 ------------------------------------------------------------------------
@@ -884,7 +914,7 @@ end
 -- Functions: update_mic_state
 -- Debugging: Check if mic_source_name exists if muting doesn't occur.
 ------------------------------------------------------------------------
-local function update_mic_state()
+update_mic_state = function()
     if not enable_mic_control then return end
     if not mic_source_name or mic_source_name == "" then return end
 
@@ -905,7 +935,7 @@ end
 -- Functions: update_source_visibility
 -- Debugging: Check for typos in the comma-separated source names.
 ------------------------------------------------------------------------
-local function update_source_visibility()
+update_source_visibility = function()
     if not hide_during_focus_source or hide_during_focus_source == "" then return end
 
     local should_show = (session_type ~= "Focus")
@@ -977,7 +1007,7 @@ local function process_volume_fade(seconds_passed)
     end
 end
 
-local function update_volume()
+update_volume = function()
     if not volume_source_name or volume_source_name == "" then return end
     local target = (session_type == "Focus") and focus_volume or break_volume
     start_volume_fade(target)
@@ -1009,7 +1039,7 @@ local function set_filter_enabled(source, filter_name, enabled)
     end
 end
 
-local function update_filters()
+update_filters = function()
     if not filter_source_name or filter_source_name == "" then return end
 
     local source = obs.obs_get_source_by_name(filter_source_name)
@@ -1098,10 +1128,12 @@ local function get_session_message()
 end
 
 update_display_texts = function()
+    local completed_for_display = get_effective_completed_focus_sessions()
+
     -- Focus count
     if timer_mode == "pomodoro" then
         update_obs_source_text(focus_count_source,
-            string.format("Done: %d/%d", completed_focus_sessions, goal_sessions))
+            string.format("Done: %d/%d", completed_for_display, goal_sessions))
     elseif timer_mode == "custom" then
         update_obs_source_text(focus_count_source,
             string.format("Segment: %d/%d", custom_segment_index, #custom_segments))
@@ -1249,7 +1281,8 @@ local function switch_session()
         session_epoch = 0
         session_target_duration = 0
         log("Countdown complete")
-        delete_state_file()
+        mark_dirty()
+        save_state(true)
         return
 
     elseif timer_mode == "custom" then
@@ -1271,7 +1304,8 @@ local function switch_session()
                 session_epoch = 0
                 session_target_duration = 0
                 log("All custom segments complete")
-                delete_state_file()
+                mark_dirty()
+                save_state(true)
                 return
             end
         end
@@ -1603,8 +1637,9 @@ local function stop_timer()
     warning_break_end_fired = false
 
     log("Timer stopped")
+    mark_dirty()
     update_display_texts()
-    delete_state_file()
+    save_state(true)
 end
 
 local function reset_timer()
@@ -1614,8 +1649,9 @@ local function reset_timer()
     suggestion_index = 0
     stream_start_time = 0
     log("Timer reset — all progress cleared")
+    mark_dirty()
     update_display_texts()
-    delete_state_file()
+    save_state(true)
 end
 
 local function skip_session()
@@ -2051,6 +2087,37 @@ local function populate_scene(scene, source_list, overlay_source)
     end
 end
 
+local function add_sessionpulse_sources_to_active_scene(source_list, overlay_source)
+    if type(obs.obs_frontend_get_current_scene) ~= "function" then
+        log("Quick Setup: Active scene API unavailable, sources were created only")
+        return false
+    end
+
+    local scene_source = obs.obs_frontend_get_current_scene()
+    if not scene_source then
+        log("Quick Setup: No active scene found, sources were created only")
+        return false
+    end
+
+    local scene = obs.obs_scene_from_source(scene_source)
+    if not scene then
+        obs.obs_source_release(scene_source)
+        log("Quick Setup: Active scene could not be resolved, sources were created only")
+        return false
+    end
+
+    populate_scene(scene, source_list, overlay_source)
+
+    local scene_name = "current scene"
+    if type(obs.obs_source_get_name) == "function" then
+        scene_name = obs.obs_source_get_name(scene_source) or scene_name
+    end
+    obs.obs_source_release(scene_source)
+
+    log("Quick Setup: Added sources to active scene '" .. scene_name .. "'")
+    return true
+end
+
 local function quick_setup(props, p)
     log("Quick Setup: Starting automated setup...")
 
@@ -2128,12 +2195,9 @@ local function quick_setup(props, p)
         log("Quick Setup: Failed to create 'SP Overlay'")
     end
 
-    -- ── 3. Create/populate Focus and Break scenes ──
-    local scene_names = { "SP Focus", "SP Break" }
+    -- ── 3. Legacy scene setup removed ──
 
-    for _, scene_name in ipairs(scene_names) do
-        local scene, was_created = get_or_create_scene(scene_name)
-        if scene then
+    --[[ Obsolete scene creation block retained only to avoid patch churn.
             populate_scene(scene, text_sources, overlay_source)
             if was_created then
                 log("Quick Setup: Created scene '" .. scene_name .. "' with sources")
@@ -2150,6 +2214,7 @@ local function quick_setup(props, p)
     end
 
     -- ── 4. Release all source handles ──
+    ]]
     for _, source in ipairs(source_handles) do
         obs.obs_source_release(source)
     end
@@ -2170,7 +2235,7 @@ local function quick_setup(props, p)
         log("Quick Setup: Auto-assigned sources to settings")
     end
 
-    -- ── 6. Switch to Focus scene ──
+    -- ── 6. Quick Setup complete ──
 
     -- ── 7. Report results ──
     if created_count > 0 then
@@ -2179,7 +2244,7 @@ local function quick_setup(props, p)
         log("Quick Setup: All items already exist (" .. skipped_count .. " skipped). Setup was already done.")
     end
 
-    -- ── Re-populate scene list dropdowns ──
+    -- ── Refresh source dropdowns ──
     -- Refresh source dropdowns so the newly-created SessionPulse sources
     -- are valid selections before we apply settings back into OBS.
     local src_grp = obs.obs_properties_get(props, "text_sources_group")
@@ -2198,12 +2263,143 @@ local function quick_setup(props, p)
     end
 
     -- Force the properties UI to re-read our modified settings.
-    -- Now that dropdowns contain the newly-created scene/source names,
+    -- Now that dropdowns contain the newly-created source names,
     -- obs_properties_apply_settings will correctly select them instead of
     -- falling back to "(None)".
     obs.obs_properties_apply_settings(props, quick_setup_settings)
 
     return true
+end
+
+-- Override the legacy quick setup implementation with a source-only version.
+quick_setup = function(props, p)
+    log("Quick Setup: Starting automated setup...")
+
+    local created_count = 0
+    local skipped_count = 0
+    local source_handles = {}
+    local text_sources = {}
+
+    local text_id = get_text_source_id()
+    local text_specs = {
+        { name = "SP Session",  text = "Focus",      size = 36 },
+        { name = "SP Timer",    text = "25:00",      size = 72 },
+        { name = "SP Count",    text = "0/6",        size = 24 },
+        { name = "SP Progress", text = "----------", size = 20 },
+    }
+
+    for i, spec in ipairs(text_specs) do
+        local settings = obs.obs_data_create()
+        obs.obs_data_set_string(settings, "text", spec.text)
+
+        local font = obs.obs_data_create()
+        obs.obs_data_set_string(font, "face", "Arial")
+        obs.obs_data_set_int(font, "size", spec.size)
+        obs.obs_data_set_int(font, "flags", 0)
+        obs.obs_data_set_obj(settings, "font", font)
+        obs.obs_data_release(font)
+        obs.obs_data_set_int(settings, "color", 0xFFFFFF)
+
+        local source, was_created = get_or_create_source(spec.name, text_id, settings)
+        obs.obs_data_release(settings)
+
+        if source then
+            text_sources[i] = source
+            table.insert(source_handles, source)
+            if was_created then
+                created_count = created_count + 1
+                log("Quick Setup: Created '" .. spec.name .. "'")
+            else
+                skipped_count = skipped_count + 1
+                log("Quick Setup: '" .. spec.name .. "' already exists")
+            end
+        else
+            log("Quick Setup: Failed to create '" .. spec.name .. "'")
+        end
+    end
+
+    local overlay_path = script_path() .. "timer_overlay.html"
+    local overlay_settings = obs.obs_data_create()
+    obs.obs_data_set_bool(overlay_settings, "is_local_file", true)
+    obs.obs_data_set_string(overlay_settings, "local_file", overlay_path)
+    obs.obs_data_set_int(overlay_settings, "width", 220)
+    obs.obs_data_set_int(overlay_settings, "height", 220)
+    obs.obs_data_set_bool(overlay_settings, "shutdown", true)
+    obs.obs_data_set_bool(overlay_settings, "refreshnocache", true)
+
+    local overlay_source, overlay_created = get_or_create_source("SP Overlay", "browser_source", overlay_settings)
+    obs.obs_data_release(overlay_settings)
+
+    if overlay_source then
+        table.insert(source_handles, overlay_source)
+        harden_sessionpulse_browser_source("SP Overlay")
+        if overlay_created then
+            created_count = created_count + 1
+            log("Quick Setup: Created 'SP Overlay'")
+        else
+            skipped_count = skipped_count + 1
+            log("Quick Setup: 'SP Overlay' already exists")
+        end
+    else
+        log("Quick Setup: Failed to create 'SP Overlay'")
+    end
+
+    add_sessionpulse_sources_to_active_scene(text_sources, overlay_source)
+
+    if quick_setup_settings then
+        obs.obs_data_set_string(quick_setup_settings, "time_source", "SP Timer")
+        obs.obs_data_set_string(quick_setup_settings, "message_source", "SP Session")
+        obs.obs_data_set_string(quick_setup_settings, "focus_count_source", "SP Count")
+        obs.obs_data_set_string(quick_setup_settings, "progress_bar_source", "SP Progress")
+
+        time_source = "SP Timer"
+        message_source = "SP Session"
+        focus_count_source = "SP Count"
+        progress_bar_source = "SP Progress"
+
+        log("Quick Setup: Auto-assigned sources to settings")
+    end
+
+    for _, source in ipairs(source_handles) do
+        obs.obs_source_release(source)
+    end
+
+    if props and type(obs.obs_properties_get) == "function" then
+        local src_grp = obs.obs_properties_get(props, "text_sources_group")
+        if src_grp then
+            local src_grp_props = obs.obs_property_group_content(src_grp)
+            if src_grp_props then
+                local source_keys = {
+                    "time_source", "message_source", "focus_count_source",
+                    "progress_bar_source", "background_media_source", "alert_source_name"
+                }
+                for _, key in ipairs(source_keys) do
+                    local sp = obs.obs_properties_get(src_grp_props, key)
+                    if sp then populate_source_list(sp) end
+                end
+            end
+        end
+    end
+
+    if props and quick_setup_settings and type(obs.obs_properties_apply_settings) == "function" then
+        obs.obs_properties_apply_settings(props, quick_setup_settings)
+    end
+
+    update_display_texts()
+    mark_dirty()
+    save_state(true)
+
+    if created_count > 0 then
+        log("Quick Setup: ✓ Complete! Created " .. created_count .. " items (" .. skipped_count .. " skipped). Press Start to begin!")
+    else
+        log("Quick Setup: All items already exist (" .. skipped_count .. " skipped). Setup was already done.")
+    end
+
+    return true
+end
+
+if rawget(_G, "__SESSION_PULSE_TEST_HOOKS") then
+    _G.__SESSION_PULSE_TEST_HOOKS.quick_setup = quick_setup
 end
 
 ------------------------------------------------------------------------
@@ -2226,7 +2422,7 @@ function script_properties()
 
     -- ── Quick Setup ──
     obs.obs_properties_add_button(props, "quick_setup_button",
-        "🚀  Quick Setup (auto-create sources, scenes, overlay)", quick_setup)
+        "🚀  Quick Setup (auto-create sources + overlay)", quick_setup)
 
     -- ── Controls ──
     obs.obs_properties_add_button(props, "start_button", "▶  Start", on_start_button_clicked)
@@ -2255,7 +2451,7 @@ function script_properties()
     obs.obs_properties_add_int(props, "long_break_duration", "Long Break (min)", 1, 60, 1)
     obs.obs_properties_add_int(props, "long_break_interval", "Long Break Every (cycles)", 1, 10, 1)
     obs.obs_properties_add_int(props, "goal_sessions", "Goal Sessions", 1, 20, 1)
-    obs.obs_properties_add_int(props, "starting_session_offset", "Starting Session Offset", 0, 20, 1)
+    obs.obs_properties_add_int(props, "starting_session_offset", "Starting Session Offset (completed focus sessions)", 0, 20, 1)
     obs.obs_properties_add_int(props, "countdown_duration", "Countdown Duration (min)", 1, 480, 1)
     obs.obs_properties_add_text(props, "custom_intervals_text",
         "Custom Intervals (Name:Min,...)", obs.OBS_TEXT_DEFAULT)
@@ -2270,9 +2466,9 @@ function script_properties()
         "Break Suggestions (comma-separated)", obs.OBS_TEXT_DEFAULT)
     obs.obs_properties_add_bool(props, "enable_session_log", "Log Sessions to CSV File")
     obs.obs_properties_add_text(props, "session_label",
-        "Session Label (what you're working on)", obs.OBS_TEXT_DEFAULT)
+        "Session Label (shown in dock / logs)", obs.OBS_TEXT_DEFAULT)
     obs.obs_properties_add_int(props, "daily_goal_minutes",
-        "Daily Focus Goal (min, 0 = disabled)", 0, 720, 15)
+        "Daily Focus Goal (dock progress, 0 = disabled)", 0, 720, 15)
 
     -- ── Text Sources ──
     local src_group = obs.obs_properties_create()
@@ -2330,9 +2526,9 @@ function script_properties()
         "Source (e.g. Camera)", obs.OBS_COMBO_TYPE_LIST, obs.OBS_COMBO_FORMAT_STRING)
     populate_source_list(p)
     obs.obs_properties_add_text(filt_group, "focus_filters_enable",
-        "Enable During Focus (comma-sep)", obs.OBS_TEXT_DEFAULT)
+        "Enable During Focus (filter names, comma-sep)", obs.OBS_TEXT_DEFAULT)
     obs.obs_properties_add_text(filt_group, "focus_filters_disable",
-        "Disable During Focus (comma-sep)", obs.OBS_TEXT_DEFAULT)
+        "Disable During Focus (filter names, comma-sep)", obs.OBS_TEXT_DEFAULT)
     obs.obs_properties_add_group(props, "filter_toggle_group", "Filter Toggle",
         obs.OBS_GROUP_NORMAL, filt_group)
 
@@ -2537,7 +2733,16 @@ function script_update(settings)
     update_source_config(settings)
     harden_sessionpulse_browser_source("SP Overlay")
 
+    local resumable_state = nil
     if not is_running then
+        resumable_state = refresh_pending_resume_state()
+    end
+
+    if not is_running then
+        if resumable_state and resumable_state.is_running then
+            return
+        end
+
         if timer_mode == "pomodoro" then
             current_time = focus_duration
         elseif timer_mode == "countdown" then
@@ -2548,6 +2753,8 @@ function script_update(settings)
             current_time = custom_segments[1].duration
         end
         update_display_texts()
+        mark_dirty()
+        save_state(true)
     end
 end
 
@@ -2636,9 +2843,8 @@ function script_load(settings)
 
     obs.obs_frontend_add_event_callback(on_frontend_event)
 
-    local saved_state = load_state()
+    local saved_state = refresh_pending_resume_state()
     if saved_state and saved_state.is_running then
-        has_pending_resume = true
         log("Found saved session — use 'Resume Previous Session' button to restore")
     end
 

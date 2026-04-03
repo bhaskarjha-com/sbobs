@@ -256,6 +256,13 @@ const obsHostedPages = [
   'timer_stats.html',
 ];
 
+const statePollingPages = [
+  'timer_dock.html',
+  'timer_overlay.html',
+  'timer_overlay_bar.html',
+  'timer_remote.html',
+];
+
 for (const page of obsHostedPages) {
   const html = fs.readFileSync(path.join(repoRoot, page), 'utf8');
   test(`${page}: no Google Fonts dependency`, !html.includes('fonts.googleapis.com'));
@@ -272,6 +279,12 @@ for (const page of obsHostedPages) {
       test(`${page}: script ${index + 1} parses`, false);
     }
   });
+}
+
+section("State Polling Recovery");
+for (const page of statePollingPages) {
+  const html = fs.readFileSync(path.join(repoRoot, page), 'utf8');
+  test(`${page}: tracks consecutive fetch failures`, html.includes('consecutiveFetchFailures'));
 }
 
 // ═══════════════════════════════════════════════════════

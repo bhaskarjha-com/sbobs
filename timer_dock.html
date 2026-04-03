@@ -964,6 +964,7 @@ function update(state) {
 
 // ── Polling ──
 let lastState = null;
+let consecutiveFetchFailures = 0;
 let pollInFlight = false;
 let pollTimer = null;
 let pollStopped = false;
@@ -974,13 +975,26 @@ async function poll() {
   try {
     const resp = await fetch('session_state.json?t=' + Date.now(), { cache: 'no-store' });
     if (resp.ok) {
+      consecutiveFetchFailures = 0;
       lastState = await resp.json();
       update(lastState);
     } else {
-      update(null);
+      consecutiveFetchFailures += 1;
+      if (consecutiveFetchFailures >= 2) {
+        lastState = null;
+        update(null);
+      } else {
+        update(lastState);
+      }
     }
   } catch (e) {
-    update(lastState);
+    consecutiveFetchFailures += 1;
+    if (consecutiveFetchFailures >= 2) {
+      lastState = null;
+      update(null);
+    } else {
+      update(lastState);
+    }
   } finally {
     pollInFlight = false;
     if (!pollStopped) {

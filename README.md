@@ -45,7 +45,7 @@ SessionPulse turns OBS into a productivity cockpit. Start a focus timer, and it 
 
 Click **🚀 Quick Setup** in the script panel. Done.
 
-This creates text sources, an overlay, focus/break scenes — and wires everything together.
+This creates the text sources and overlay, adds them to your current scene, and wires them into the script for a single-scene setup.
 
 ### 3. Set Hotkeys
 

@@ -53,12 +53,12 @@ Click **one button** and SessionPulse creates everything for you:
 This automatically:
 - ✅ Creates 4 text sources (`SP Timer`, `SP Session`, `SP Count`, `SP Progress`)
 - ✅ Creates a ring overlay Browser Source (`SP Overlay`)
-- ✅ Creates two scenes (`SP Focus` and `SP Break`) with all sources positioned
+- ✅ Adds them to your currently active scene
 - ✅ Wires all sources to the script dropdowns
 
 Check the Script Log to confirm:
 ```
-[SessionPulse] Quick Setup: ✓ Complete! Created 7 items. Press Start to begin!
+[SessionPulse] Quick Setup: ✓ Complete! Created 5 items. Press Start to begin!
 ```
 
 > **Skip to [Step 4: Set Up Hotkeys](#step-4-set-up-hotkeys)** — sources, scenes, and overlay are ready.

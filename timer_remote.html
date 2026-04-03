@@ -444,6 +444,7 @@ function fmtDur(s) {
 // we attempt to fetch the state file if accessible on the same network.
 
 let lastState = null;
+let consecutiveFetchFailures = 0;
 
 async function pollState() {
   // Try direct HTTP fetch (works if user serves files via a local server)
@@ -453,6 +454,7 @@ async function pollState() {
     const httpPort = localStorage.getItem('obs_remote_http_port') || '8080';
     const resp = await fetch(`http://${host}:${httpPort}/session_state.json?t=${Date.now()}`);
     if (resp.ok) {
+      consecutiveFetchFailures = 0;
       lastState = await resp.json();
       updateUI(lastState);
       return;
@@ -463,6 +465,7 @@ async function pollState() {
   try {
     const resp = await fetch('session_state.json?t=' + Date.now());
     if (resp.ok) {
+      consecutiveFetchFailures = 0;
       lastState = await resp.json();
       updateUI(lastState);
       return;
@@ -470,6 +473,10 @@ async function pollState() {
   } catch(e) {}
 
   // No state available — show controls only
+  consecutiveFetchFailures += 1;
+  if (consecutiveFetchFailures >= 2) {
+    lastState = null;
+  }
   if (!lastState) {
     subInfo.textContent = 'Controls active · state unavailable';
   }

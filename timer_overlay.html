@@ -259,6 +259,7 @@ const COLORS = {
 const OVERTIME_PALETTE = { color: 'var(--overtime-color)', glow: 'var(--overtime-glow)' };
 
 let lastState = null;
+let consecutiveFetchFailures = 0;
 
 function formatTime(seconds) {
   if (seconds < 0) seconds = 0;
@@ -373,7 +374,7 @@ function update(state) {
   if (SHOW_NEXT && is_running && !overtime) {
     let nextText = '';
     if (next_session_type) nextText = `Next: ${next_session_type}`;
-    if (ends_at) nextText += nextText ? ` · ${ends_at}` : `Ends ${ends_at}`;
+    if (ends_at) nextText += nextText ? ` · Ends ${ends_at}` : `Ends at ${ends_at}`;
     nextUpEl.textContent = nextText;
   } else {
     nextUpEl.textContent = '';
@@ -395,13 +396,26 @@ async function poll() {
     const resp = await fetch('session_state.json?t=' + Date.now(), { cache: 'no-store' });
     if (resp.ok) {
       const state = await resp.json();
+      consecutiveFetchFailures = 0;
       lastState = state;
       update(state);
     } else {
-      update(null);
+      consecutiveFetchFailures += 1;
+      if (consecutiveFetchFailures >= 2) {
+        lastState = null;
+        update(null);
+      } else {
+        update(lastState);
+      }
     }
   } catch (e) {
-    update(lastState);
+    consecutiveFetchFailures += 1;
+    if (consecutiveFetchFailures >= 2) {
+      lastState = null;
+      update(null);
+    } else {
+      update(lastState);
+    }
   } finally {
     pollInFlight = false;
     if (!pollStopped) {

@@ -7,6 +7,9 @@
 local pass_count = 0
 local fail_count = 0
 local test_count = 0
+local PATH_SEP = package.config:sub(1, 1)
+local TEST_STATE_FILE = "tests" .. PATH_SEP .. "session_state.json"
+local TEST_STATE_TMP_FILE = TEST_STATE_FILE .. ".tmp"
 
 local function test(name, condition)
     test_count = test_count + 1
@@ -32,12 +35,22 @@ local function make_mock_obs()
         data_creates = 0,
         data_releases = 0
     }
+    local sources = {}
 
     local mock = {
         OBS_INVALID_HOTKEY_ID = -1,
         OBS_FRONTEND_EVENT_STREAMING_STARTED = 1,
         OBS_FRONTEND_EVENT_STREAMING_STOPPED = 2,
         OBS_FRONTEND_EVENT_RECORDING_STARTED = 3
+    }
+    local current_scene = {
+        name = "Current Scene",
+        items = {}
+    }
+    local current_scene_source = {
+        name = "Current Scene",
+        id = "scene",
+        scene = current_scene
     }
 
     function mock.obs_data_create()
@@ -61,6 +74,10 @@ local function make_mock_obs()
         data[key] = value
     end
 
+    function mock.obs_data_set_obj(data, key, value)
+        data[key] = value
+    end
+
     function mock.obs_data_get_string(data, key)
         return data[key] or ""
     end
@@ -75,11 +92,14 @@ local function make_mock_obs()
 
     function mock.obs_get_source_by_name(name)
         counters.get_source_by_name = counters.get_source_by_name + 1
-        return {
-            name = name,
-            id = "text_gdiplus",
-            volume = 1.0
-        }
+        if not sources[name] then
+            sources[name] = {
+                name = name,
+                id = "text_gdiplus",
+                volume = 1.0
+            }
+        end
+        return sources[name]
     end
 
     function mock.obs_source_release(source)
@@ -93,6 +113,10 @@ local function make_mock_obs()
 
     function mock.obs_source_get_id(source)
         return source.id
+    end
+
+    function mock.obs_source_get_name(source)
+        return source.name
     end
 
     function mock.obs_source_media_restart(source)
@@ -134,6 +158,10 @@ local function make_mock_obs()
         mock.last_scene = source.name
     end
 
+    function mock.obs_frontend_get_current_scene()
+        return current_scene_source
+    end
+
     function mock.obs_frontend_add_event_callback(callback)
     end
 
@@ -170,7 +198,33 @@ local function make_mock_obs()
     function mock.timer_remove(callback)
     end
 
+    function mock.obs_scene_from_source(source)
+        return source and source.scene or nil
+    end
+
+    function mock.obs_scene_find_source(scene, source_name)
+        return scene and scene.items[source_name] or nil
+    end
+
+    function mock.obs_scene_add(scene, source)
+        local item = {
+            source = source
+        }
+        scene.items[source.name] = item
+        return item
+    end
+
+    function mock.obs_sceneitem_set_pos(item, pos)
+        item.pos = { x = pos.x, y = pos.y }
+    end
+
+    function mock.vec2()
+        return { x = 0, y = 0 }
+    end
+
     mock.counters = counters
+    mock.sources = sources
+    mock.current_scene = current_scene
     return mock
 end
 
@@ -182,12 +236,24 @@ local function reset_counters(mock_obs)
 end
 
 local function cleanup_state_files()
-    os.remove("tests/session_state.json")
-    os.remove("tests/session_state.json.tmp")
+    local file = io.open(TEST_STATE_FILE, "w")
+    if file then
+        file:write("")
+        file:close()
+    end
+
+    local tmp_file = io.open(TEST_STATE_TMP_FILE, "w")
+    if tmp_file then
+        tmp_file:write("")
+        tmp_file:close()
+    end
 end
 
-local function load_runtime(settings)
-    cleanup_state_files()
+local function load_runtime(settings, options)
+    options = options or {}
+    if not options.preserve_state then
+        cleanup_state_files()
+    end
 
     _G.__SESSION_PULSE_TEST_HOOKS = {}
     _G.obslua = make_mock_obs()
@@ -344,6 +410,117 @@ do
     script_tick(0.016)
     test("auto-advance executes during script_tick", hooks.get_runtime_state().session_type == "Short Break")
     test("auto-advance does not switch scenes", mock_obs.counters.frontend_scene_switches == 0)
+end
+
+section("Resume Previous Session")
+do
+    local mock_obs, hooks = load_runtime(base_settings)
+
+    fake_now = 1035
+    local state_file = io.open(TEST_STATE_FILE, "w")
+    state_file:write(table.concat({
+        "{",
+        '  "version": "5.4.1",',
+        '  "timer_mode": "pomodoro",',
+        '  "is_running": true,',
+        '  "is_paused": false,',
+        '  "session_type": "Focus",',
+        '  "current_time": 90,',
+        '  "cycle_count": 2,',
+        '  "completed_focus_sessions": 2,',
+        '  "total_focus_seconds": 1500,',
+        '  "custom_segment_index": 0,',
+        '  "session_epoch": 1000,',
+        '  "session_pause_total": 0,',
+        '  "session_target_duration": 120,',
+        '  "timestamp": 1030',
+        "}"
+    }, "\n"))
+    state_file:close()
+
+    hooks.on_resume_button_clicked(nil, nil)
+    script_tick(0.016)
+
+    local resumed = hooks.get_runtime_state()
+    test("resume restores running state", resumed.is_running == true)
+    test("resume preserves unpaused sessions", resumed.is_paused == false)
+    test("resume restores exact saved remaining time", resumed.current_time == 90)
+end
+
+section("Resume State Preservation")
+do
+    cleanup_state_files()
+    local state_file = io.open(TEST_STATE_FILE, "w")
+    state_file:write(table.concat({
+        "{",
+        '  "version": "5.4.1",',
+        '  "timer_mode": "pomodoro",',
+        '  "is_running": true,',
+        '  "is_paused": false,',
+        '  "session_type": "Focus",',
+        '  "current_time": 90,',
+        '  "cycle_count": 2,',
+        '  "completed_focus_sessions": 2,',
+        '  "total_focus_seconds": 1500,',
+        '  "custom_segment_index": 0,',
+        '  "session_epoch": 1000,',
+        '  "session_pause_total": 0,',
+        '  "session_target_duration": 120,',
+        '  "timestamp": 1030',
+        "}"
+    }, "\n"))
+    state_file:close()
+
+    load_runtime(base_settings, { preserve_state = true })
+
+    local after_file = io.open(TEST_STATE_FILE, "r")
+    local after_content = after_file:read("*all")
+    after_file:close()
+
+    test("script_update preserves resumable running state", after_content:find('"is_running": true', 1, true) ~= nil)
+    test("script_update preserves saved current time", after_content:find('"current_time": 90', 1, true) ~= nil)
+    cleanup_state_files()
+end
+
+section("Idle State Persistence")
+do
+    fake_now = 1000
+    local _, hooks = load_runtime(base_settings)
+
+    hooks.on_start_button_clicked(nil, nil)
+    script_tick(0.016)
+    hooks.on_stop_button_clicked(nil, nil)
+    script_tick(0.016)
+
+    local stopped = hooks.get_runtime_state()
+    test("stop returns runtime to idle", stopped.is_running == false and stopped.session_type == "Focus")
+    test("stop clears completed sessions in runtime", stopped.completed_focus_sessions == 0)
+end
+
+section("Starting Session Offset")
+do
+    cleanup_state_files()
+    local settings = {}
+    for k, v in pairs(base_settings) do settings[k] = v end
+    settings.starting_session_offset = 2
+
+    local mock_obs = load_runtime(settings)
+    local count_source = mock_obs.sources["CountText"]
+    local count_text = count_source and count_source.settings and count_source.settings.text or ""
+
+    test("offset is visible before first start", count_text == "Done: 2/6")
+end
+
+section("Quick Setup Placement")
+do
+    local mock_obs, hooks = load_runtime(base_settings)
+
+    test("quick setup returns true", hooks.quick_setup(nil, nil) == true)
+    test("quick setup places timer in current scene", mock_obs.current_scene.items["SP Timer"] ~= nil)
+    test("quick setup places session label in current scene", mock_obs.current_scene.items["SP Session"] ~= nil)
+    test("quick setup places count in current scene", mock_obs.current_scene.items["SP Count"] ~= nil)
+    test("quick setup places progress in current scene", mock_obs.current_scene.items["SP Progress"] ~= nil)
+    test("quick setup places overlay in current scene", mock_obs.current_scene.items["SP Overlay"] ~= nil)
 end
 
 cleanup_state_files()
