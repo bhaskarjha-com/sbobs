@@ -298,7 +298,10 @@ do
     test("queue drained after script_tick", hooks.get_pending_control_count() == 0)
     test("skip executed during script_tick", after.is_running == true and after.session_type == "Short Break")
     test("skip updated OBS sources when processed", mock_obs.counters.get_source_by_name > 0)
-    test("skip switched to break scene after processing", mock_obs.counters.frontend_scene_switches == 1 and mock_obs.last_scene == "BreakScene")
+    test("skip defers scene switch to a later script_tick", mock_obs.counters.frontend_scene_switches == 0)
+
+    script_tick(0.016)
+    test("skip switches to break scene on next script_tick", mock_obs.counters.frontend_scene_switches == 1 and mock_obs.last_scene == "BreakScene")
 end
 
 section("Frontend Event Queue")
@@ -343,7 +346,10 @@ do
 
     script_tick(0.016)
     test("auto-advance executes during script_tick", hooks.get_runtime_state().session_type == "Short Break")
-    test("auto-advance switches scene during script_tick", mock_obs.counters.frontend_scene_switches == 1 and mock_obs.last_scene == "BreakScene")
+    test("auto-advance defers scene switch to a later script_tick", mock_obs.counters.frontend_scene_switches == 0)
+
+    script_tick(0.016)
+    test("auto-advance switches scene on next script_tick", mock_obs.counters.frontend_scene_switches == 1 and mock_obs.last_scene == "BreakScene")
 end
 
 cleanup_state_files()

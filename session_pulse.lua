@@ -200,6 +200,7 @@ local hotkey_reset = obs.OBS_INVALID_HOTKEY_ID
 
 -- Queued control actions
 local pending_control_actions = {}
+local pending_runtime_effects = {}
 
 ------------------------------------------------------------------------
 -- 4. Helpers
@@ -236,6 +237,15 @@ local function has_pending_control_action(action)
         end
     end
     return false
+end
+
+local function queue_runtime_effect(effect, origin)
+    if not effect or effect == "" then return end
+    pending_runtime_effects[#pending_runtime_effects + 1] = {
+        effect = effect,
+        origin = origin or "unknown"
+    }
+    log("Runtime effect queued (" .. (origin or "unknown") .. "): " .. effect)
 end
 
 local function json_escape(str)
@@ -809,6 +819,49 @@ local function play_alert_sound()
     end
 end
 
+local function harden_sessionpulse_browser_source(source_name)
+    if not source_name or source_name == "" then return false end
+
+    local source = obs.obs_get_source_by_name(source_name)
+    if not source then return false end
+
+    local changed = false
+    local ok, settings = pcall(function()
+        return obs.obs_source_get_settings(source)
+    end)
+
+    if ok and settings and obs.obs_source_get_id(source) == "browser_source" then
+        local is_local = obs.obs_data_get_bool(settings, "is_local_file")
+        local local_file = obs.obs_data_get_string(settings, "local_file") or ""
+        local is_sessionpulse_page =
+            local_file:find("timer_overlay%.html", 1, false) ~= nil or
+            local_file:find("timer_overlay_bar%.html", 1, false) ~= nil or
+            local_file:find("timer_stats%.html", 1, false) ~= nil or
+            local_file:find("timer_remote%.html", 1, false) ~= nil
+
+        if source_name == "SP Overlay" or (is_local and is_sessionpulse_page) then
+            if not obs.obs_data_get_bool(settings, "shutdown") then
+                obs.obs_data_set_bool(settings, "shutdown", true)
+                changed = true
+            end
+            if not obs.obs_data_get_bool(settings, "refreshnocache") then
+                obs.obs_data_set_bool(settings, "refreshnocache", true)
+                changed = true
+            end
+
+            if changed then
+                obs.obs_source_update(source, settings)
+                log("Hardened browser source '" .. source_name .. "' for scene-switch stability")
+            end
+        end
+
+        obs.obs_data_release(settings)
+    end
+
+    obs.obs_source_release(source)
+    return changed
+end
+
 ------------------------------------------------------------------------
 -- 8. Scene Switching
 --
@@ -1163,14 +1216,28 @@ local function update_session(new_type, duration, message)
     warning_break_end_fired = false
 
     show_transition_msg(message)
-    update_background_media()
-    play_alert_sound()
     schedule_scene_switch()
-    update_mic_state()
-    update_source_visibility()
-    update_volume()
-    update_filters()
-    add_chapter_marker()
+    if background_media_source and background_media_source ~= "" then
+        queue_runtime_effect("background_media", "session_transition")
+    end
+    if alert_source_name and alert_source_name ~= "" then
+        queue_runtime_effect("alert_sound", "session_transition")
+    end
+    if enable_mic_control and mic_source_name and mic_source_name ~= "" then
+        queue_runtime_effect("mic_state", "session_transition")
+    end
+    if hide_during_focus_source and hide_during_focus_source ~= "" then
+        queue_runtime_effect("source_visibility", "session_transition")
+    end
+    if volume_source_name and volume_source_name ~= "" then
+        queue_runtime_effect("volume", "session_transition")
+    end
+    if filter_source_name and filter_source_name ~= "" then
+        queue_runtime_effect("filters", "session_transition")
+    end
+    if enable_chapter_markers then
+        queue_runtime_effect("chapter_marker", "session_transition")
+    end
     mark_dirty()
 end
 
@@ -1652,10 +1719,14 @@ local function subtract_time()
             is_overtime = true
             overtime_epoch = os.time()
             overtime_seconds = 0
-            play_alert_sound()
+            if not has_pending_control_action("play_alert_sound") then
+                queue_control_action("play_alert_sound", "subtract_time")
+            end
             log("Overtime started for " .. session_type)
         elseif not is_overtime then
-            switch_session()
+            if not has_pending_control_action("auto_advance") then
+                queue_control_action("auto_advance", "subtract_time")
+            end
         end
     end
 
@@ -1722,6 +1793,35 @@ local function process_pending_control_actions()
             log("Warning: unknown queued control action '" .. tostring(item.action) .. "'")
         end
     end
+
+    return processed
+end
+
+local function process_pending_runtime_effects()
+    if #pending_runtime_effects == 0 then return 0 end
+
+    local item = table.remove(pending_runtime_effects, 1)
+    log("Runtime effect executing (" .. item.origin .. "): " .. item.effect)
+
+    if item.effect == "background_media" then
+        update_background_media()
+    elseif item.effect == "alert_sound" then
+        play_alert_sound()
+    elseif item.effect == "mic_state" then
+        update_mic_state()
+    elseif item.effect == "source_visibility" then
+        update_source_visibility()
+    elseif item.effect == "volume" then
+        update_volume()
+    elseif item.effect == "filters" then
+        update_filters()
+    elseif item.effect == "chapter_marker" then
+        add_chapter_marker()
+    else
+        log("Warning: unknown runtime effect '" .. tostring(item.effect) .. "'")
+    end
+
+    return 1
 end
 
 local function on_start_button_clicked(props, prop)
@@ -1775,6 +1875,9 @@ if rawget(_G, "__SESSION_PULSE_TEST_HOOKS") then
     _G.__SESSION_PULSE_TEST_HOOKS.on_resume_button_clicked = on_resume_button_clicked
     _G.__SESSION_PULSE_TEST_HOOKS.get_pending_control_count = function()
         return #pending_control_actions
+    end
+    _G.__SESSION_PULSE_TEST_HOOKS.get_pending_runtime_effect_count = function()
+        return #pending_runtime_effects
     end
     _G.__SESSION_PULSE_TEST_HOOKS.get_runtime_state = function()
         return {
@@ -2026,7 +2129,8 @@ local function quick_setup(props, p)
     obs.obs_data_set_string(overlay_settings, "local_file", overlay_path)
     obs.obs_data_set_int(overlay_settings, "width", 220)
     obs.obs_data_set_int(overlay_settings, "height", 220)
-    obs.obs_data_set_bool(overlay_settings, "shutdown", false)
+    obs.obs_data_set_bool(overlay_settings, "shutdown", true)
+    obs.obs_data_set_bool(overlay_settings, "refreshnocache", true)
 
     local overlay_source, overlay_created = get_or_create_source(
         "SP Overlay", "browser_source", overlay_settings)
@@ -2034,6 +2138,7 @@ local function quick_setup(props, p)
 
     if overlay_source then
         table.insert(source_handles, overlay_source)
+        harden_sessionpulse_browser_source("SP Overlay")
         if overlay_created then
             log("Quick Setup: Created 'SP Overlay'")
             created_count = created_count + 1
@@ -2499,6 +2604,7 @@ function script_update(settings)
     update_timer_config(settings)
     update_automation_config(settings)
     update_source_config(settings)
+    harden_sessionpulse_browser_source("SP Overlay")
 
     if not is_running then
         if timer_mode == "pomodoro" then
@@ -2523,7 +2629,11 @@ end
 ------------------------------------------------------------------------
 function script_tick(seconds)
     process_volume_fade(seconds)
-    process_pending_control_actions()
+    local controls_processed = process_pending_control_actions()
+    if controls_processed > 0 then return end
+
+    local effects_processed = process_pending_runtime_effects()
+    if effects_processed > 0 then return end
 
     -- Execute pending scene switch in the SAFE execution context.
     -- This is the fix for the cross-thread deadlock: obs_frontend_set_current_scene
@@ -2564,6 +2674,7 @@ end
 
 function script_load(settings)
     obs.timer_add(timer_tick, 1000)
+    harden_sessionpulse_browser_source("SP Overlay")
 
     hotkey_start_pause = obs.obs_hotkey_register_frontend(
         "session_pulse_start_pause", "SessionPulse: Start / Pause", on_hotkey_start_pause)
