@@ -1,10 +1,22 @@
 # SessionPulse — Developer Architecture Reference
 
 ## 1. File Structure
-While SessionPulse is distributed as a single Lua script for ease of installation, the broader project contains:
-- `session_pulse.lua`: The main OBS automation engine. Contains all logic.
-- `timer_overlay.html`: The browser source overlay used for visual display.
-- `docs/`: User-facing documentation and this architecture reference.
+SessionPulse ships as a flat directory — OBS Browser Sources use `file://` protocol and resolve relative paths from the script location, so subdirectories would break source resolution.
+
+| File | Purpose |
+|------|---------|
+| `session_pulse.lua` | Core engine — all timer logic, OBS automation, state management |
+| `session_state.json` | Runtime state file (35 fields, written every second, gitignored) |
+| `session_history.csv` | Session log (appended on completion, gitignored) |
+| `timer_dock.html` | WebSocket control dock (Start/Pause/Skip/Stop + stats) |
+| `timer_overlay.html` | Circular ring overlay (themeable, poll-based) |
+| `timer_overlay_bar.html` | Horizontal bar overlay (auto-hides when idle) |
+| `timer_stats.html` | Productivity stats dashboard (7-day chart, session log) |
+| `timer_remote.html` | Mobile remote control (WebSocket + HTTP polling) |
+| `shared.js` | ES module utilities for custom integrations (not used by built-in UIs) |
+| `docs/` | User-facing guides and this architecture reference |
+| `tests/` | Automated test suites (Lua core + JS frontend) |
+| `.github/workflows/` | CI pipeline running both test suites |
 
 ## 2. State Machine
 
@@ -44,7 +56,7 @@ The script is divided into exactly 23 sections, labeled with standard `---` comm
 5. **Session History Log**: Appends sessions to `session_history.csv`.
 6. **Session Persistence**: Saves/Loads `session_state.json` via atomic writes.
 7. **OBS Source Interaction**: Modifies OBS Text, Media, and Browser sources.
-8. **Scene Switching**: Switches `SP Focus` / `SP Break`.
+8. **Scene Switching**: Queues switches via `pending_scene_name`; executed in `script_tick()` (not `timer_add`) to avoid cross-thread deadlock.
 9. **Mic Control**: Toggles muted state.
 10. **Source Visibility**: Enables/disables comma-separated sources.
 11. **Volume Ducking**: Ease-in-out audio fades.

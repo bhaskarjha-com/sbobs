@@ -86,19 +86,23 @@ test("String with all special chars", json_escape('"\\"\n') == '\\"\\\\\\\"\\n')
 section("Time Formatting")
 
 local function format_time(seconds)
-    if seconds < 0 then
-        return string.format("-%d:%02d", math.floor(-seconds / 60), (-seconds) % 60)
+    if seconds < 0 then seconds = 0 end
+    if seconds >= 3600 then
+        return string.format("%d:%02d:%02d",
+            math.floor(seconds / 3600),
+            math.floor((seconds % 3600) / 60),
+            seconds % 60)
     end
-    return string.format("%d:%02d", math.floor(seconds / 60), seconds % 60)
+    return string.format("%02d:%02d", math.floor(seconds / 60), seconds % 60)
 end
 
 test("25 minutes", format_time(1500) == "25:00")
-test("1 second", format_time(1) == "0:01")
-test("0 seconds", format_time(0) == "0:00")
-test("59 seconds", format_time(59) == "0:59")
-test("60 seconds", format_time(60) == "1:00")
-test("Negative (overtime)", format_time(-90) == "-1:30")
-test("Large value", format_time(3661) == "61:01")
+test("1 second", format_time(1) == "00:01")
+test("0 seconds", format_time(0) == "00:00")
+test("59 seconds", format_time(59) == "00:59")
+test("60 seconds", format_time(60) == "01:00")
+test("Negative (clamped to 0)", format_time(-90) == "00:00")
+test("Large value (with hours)", format_time(3661) == "1:01:01")
 
 -- ═══════════════════════════════════════════════════════
 -- Test 4: Duration Formatting (human-readable)
@@ -262,7 +266,7 @@ local function build_state_json()
         '  "session_target_duration": %d,\n' ..
         '  "timestamp": %d\n' ..
         '}',
-        "5.4.0", "pomodoro",
+        "5.4.1", "pomodoro",
         "true", "false",
         "Focus", 1234, 1500,
         266, 18, "15:45",
@@ -282,7 +286,7 @@ local function build_state_json()
 end
 
 local json_out = build_state_json()
-test("JSON contains version", json_out:find('"version": "5.4.0"') ~= nil)
+test("JSON contains version", json_out:find('"version": "5.4.1"') ~= nil)
 test("JSON contains focus_streak", json_out:find('"focus_streak": 2') ~= nil)
 test("JSON contains daily_focus_seconds", json_out:find('"daily_focus_seconds": 7200') ~= nil)
 test("JSON contains daily_goal_seconds", json_out:find('"daily_goal_seconds": 14400') ~= nil)
@@ -338,19 +342,26 @@ end
 -- ═══════════════════════════════════════════════════════
 section("CSV Parsing (Lua-side)")
 
+-- Pattern matches both quoted and unquoted fields (as log_session wraps in quotes)
 local function parse_csv_row(line)
-    local date, _, stype, dur = line:match("^([^,]+),([^,]+),([^,]+),(%d+)")
+    local date, _, stype, dur = line:match('^"?([^",]+)"?,([^,]+),"?([^",]+)"?,(%d+)')
     return date, stype, tonumber(dur)
 end
 
--- Simple row
+-- Unquoted row (legacy or external)
 local d1, s1, dur1 = parse_csv_row('2026-03-31,10:45:23,Focus,1500,true,pomodoro,1500,"Math homework"')
-test("Parse date", d1 == "2026-03-31")
-test("Parse session type", s1 == "Focus")
-test("Parse duration", dur1 == 1500)
+test("Parse date (unquoted)", d1 == "2026-03-31")
+test("Parse session type (unquoted)", s1 == "Focus")
+test("Parse duration (unquoted)", dur1 == 1500)
+
+-- Quoted row (as log_session actually produces)
+local d3, s3, dur3 = parse_csv_row('"2026-03-31","10:45:23","Focus",1500,true,"pomodoro",1500,"Math homework"')
+test("Parse date (quoted)", d3 == "2026-03-31")
+test("Parse session type (quoted)", s3 == "Focus")
+test("Parse duration (quoted)", dur3 == 1500)
 
 -- Row with comma in quoted label (label is last field, doesn't affect fields 1-4)
-local d2, s2, dur2 = parse_csv_row('2026-03-31,10:45:23,Focus,1500,true,pomodoro,1500,"Math, Physics"')
+local d2, s2, dur2 = parse_csv_row('"2026-03-31","10:45:23","Focus",1500,true,"pomodoro",1500,"Math, Physics"')
 test("Comma in label doesn't break fields 1-4", d2 == "2026-03-31")
 test("Session type still correct", s2 == "Focus")
 test("Duration still correct", dur2 == 1500)

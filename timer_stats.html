@@ -4,9 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>SessionPulse — Productivity Stats</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
     --bg: #0f1019;
@@ -29,7 +26,7 @@
   body {
     background: var(--bg);
     color: var(--text-primary);
-    font-family: 'Inter', -apple-system, sans-serif;
+    font-family: 'Segoe UI Variable', 'Segoe UI', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
     padding: 20px;
     min-height: 100vh;
   }
@@ -537,9 +534,15 @@ function renderStats(stats) {
     `${stats.totalSessions} sessions · ${formatDuration(stats.totalFocusSeconds)} focused`;
 }
 
+let loadTimer = null;
+let loadInFlight = false;
+let loadStopped = false;
+
 async function loadData() {
+  if (loadStopped || loadInFlight) return;
+  loadInFlight = true;
   try {
-    const resp = await fetch('session_history.csv?t=' + Date.now());
+    const resp = await fetch('session_history.csv?t=' + Date.now(), { cache: 'no-store' });
     if (!resp.ok) {
       document.getElementById('headerMeta').textContent = 'No data file found';
       renderChart({});
@@ -562,12 +565,19 @@ async function loadData() {
     document.getElementById('headerMeta').textContent = 'Error loading data';
     console.error('[Stats]', e);
     renderChart({});
+  } finally {
+    loadInFlight = false;
+    if (!loadStopped) {
+      loadTimer = setTimeout(loadData, 30000);
+    }
   }
 }
 
 loadData();
-// Auto-refresh every 30 seconds
-setInterval(loadData, 30000);
+window.addEventListener('beforeunload', () => {
+  loadStopped = true;
+  if (loadTimer) clearTimeout(loadTimer);
+});
 </script>
 </body>
 </html>

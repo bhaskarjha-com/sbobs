@@ -161,9 +161,9 @@ If you're building an HTTP-served custom UI:
   const response = await fetch('session_state.json');
   const state = await response.json();
   
-  const badge = getBadgeInfo(state.session_type);
+  const badge = getBadgeInfo(state);
   document.getElementById('time').textContent = formatTime(state.current_time);
-  document.getElementById('badge').textContent = badge.emoji + ' ' + state.session_type;
+  document.getElementById('badge').textContent = badge.text;
 </script>
 ```
 
@@ -193,7 +193,7 @@ If you're building an HTTP-served custom UI:
 | `overtime_seconds` | number | How far past zero |
 | `timestamp` | number | Unix epoch of last update |
 
-Full field list (35 fields) is in the [README State File API section](../README.md#state-file-api).
+Full field list (35 fields) is in the [README State File API section](../README.md#-state-file-api).
 
 ---
 

@@ -4,9 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>SessionPulse — Bar Overlay</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
     --focus: #22c55e;
@@ -24,7 +21,7 @@
 
   body {
     background: transparent;
-    font-family: 'Inter', -apple-system, sans-serif;
+    font-family: 'Segoe UI Variable', 'Segoe UI', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
     overflow: hidden;
   }
 
@@ -163,7 +160,7 @@
 </div>
 
 <script>
-const POLL_INTERVAL = 500;
+const POLL_INTERVAL = 750;
 const params = new URLSearchParams(window.location.search);
 const position = params.get('position') || 'top';
 
@@ -280,10 +277,15 @@ function update(state) {
 }
 
 let lastState = null;
+let pollInFlight = false;
+let pollTimer = null;
+let pollStopped = false;
 
 async function poll() {
+  if (pollStopped || pollInFlight) return;
+  pollInFlight = true;
   try {
-    const resp = await fetch('session_state.json?t=' + Date.now());
+    const resp = await fetch('session_state.json?t=' + Date.now(), { cache: 'no-store' });
     if (resp.ok) {
       lastState = await resp.json();
       update(lastState);
@@ -292,11 +294,20 @@ async function poll() {
     }
   } catch (e) {
     update(lastState);
+  } finally {
+    pollInFlight = false;
+    if (!pollStopped) {
+      pollTimer = setTimeout(poll, POLL_INTERVAL);
+    }
   }
 }
 
+window.addEventListener('beforeunload', () => {
+  pollStopped = true;
+  if (pollTimer) clearTimeout(pollTimer);
+});
+
 poll();
-setInterval(poll, POLL_INTERVAL);
 </script>
 </body>
 </html>

@@ -5,6 +5,9 @@
  * Run from tests dir:      cd tests && node test_frontend.js
  */
 
+const fs = require('node:fs');
+const path = require('node:path');
+
 let pass = 0, fail = 0, total = 0;
 
 function test(name, condition) {
@@ -142,20 +145,21 @@ test("Mixed special chars", htmlEscape('<a href="x">&') === '&lt;a href=&quot;x&
 section("Time Formatting (JS)");
 
 function formatTime(seconds) {
-  const neg = seconds < 0;
-  const abs = Math.abs(seconds);
-  const m = Math.floor(abs / 60);
-  const s = abs % 60;
-  const str = `${m}:${String(s).padStart(2, '0')}`;
-  return neg ? `-${str}` : str;
+  if (seconds == null || seconds < 0) return '--:--';
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  if (h > 0) return `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+  return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
 }
 
 test("25:00", formatTime(1500) === "25:00");
-test("0:01", formatTime(1) === "0:01");
-test("0:00", formatTime(0) === "0:00");
-test("1:00", formatTime(60) === "1:00");
-test("-1:30 (overtime)", formatTime(-90) === "-1:30");
-test("61:01", formatTime(3661) === "61:01");
+test("00:01", formatTime(1) === "00:01");
+test("00:00", formatTime(0) === "00:00");
+test("01:00", formatTime(60) === "01:00");
+test("Negative returns --:--", formatTime(-90) === "--:--");
+test("1:01:01 (with hours)", formatTime(3661) === "1:01:01");
+test("Null returns --:--", formatTime(null) === "--:--");
 
 // ═══════════════════════════════════════════════════════
 // Duration Formatting (from stats dashboard)
@@ -238,6 +242,37 @@ test("Expected 35 fields in state JSON", expectedFields.length === 35);
 // Verify the README claims "36+ fields" — count includes version
 const docClaim = 36;
 test(`README says "${docClaim}+" which covers ${expectedFields.length} fields`, expectedFields.length >= docClaim - 1);
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// OBS Browser Surface Hardening
+// ═══════════════════════════════════════════════════════════════════════════════
+section("OBS Browser Surface Hardening");
+
+const repoRoot = path.resolve(__dirname, '..');
+const obsHostedPages = [
+  'timer_dock.html',
+  'timer_overlay.html',
+  'timer_overlay_bar.html',
+  'timer_stats.html',
+];
+
+for (const page of obsHostedPages) {
+  const html = fs.readFileSync(path.join(repoRoot, page), 'utf8');
+  test(`${page}: no Google Fonts dependency`, !html.includes('fonts.googleapis.com'));
+  test(`${page}: no jsDelivr dependency`, !html.includes('cdn.jsdelivr.net'));
+  test(`${page}: no module script tag`, !html.includes('type="module"'));
+
+  const scripts = [...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)];
+  test(`${page}: has inline script`, scripts.length > 0);
+  scripts.forEach((match, index) => {
+    try {
+      new Function(match[1]);
+      test(`${page}: script ${index + 1} parses`, true);
+    } catch (error) {
+      test(`${page}: script ${index + 1} parses`, false);
+    }
+  });
+}
 
 // ═══════════════════════════════════════════════════════
 // Results

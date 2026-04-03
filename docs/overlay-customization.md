@@ -41,27 +41,26 @@ timer_overlay.html?theme=neon&size=300&font=Outfit&showStats=false
 | Parameter | Default | Description | Example |
 |-----------|---------|-------------|---------|
 | `theme` | `default` | Visual theme | `?theme=glassmorphism` |
-| `size` | `200` | Ring diameter in pixels | `?size=300` |
+| `size` | `220` | Ring diameter in pixels | `?size=300` |
 | `font` | `Inter` | Any [Google Font](https://fonts.google.com) name | `?font=Outfit` |
 | `showStats` | `true` | Show session count below timer | `?showStats=false` |
-| `showNext` | `true` | Show "Next: Short Break" text | `?showNext=false` |
-| `showTime` | `true` | Show "Ends 15:45" text | `?showTime=false` |
+| `showNext` | `true` | Show "Next: Short Break" and "Ends" text | `?showNext=false` |
 
 ### Custom Colors
 
-Override the default session colors with hex codes (without `#`):
+Override the default session colors with hex codes (with or without `#`):
 
 | Parameter | Default | Session |
 |-----------|---------|---------|
 | `color_focus` | `22c55e` (green) | Focus |
-| `color_short` | `3b82f6` (blue) | Short Break |
-| `color_long` | `a855f7` (purple) | Long Break |
-| `color_paused` | `eab308` (yellow) | Paused |
-| `color_overtime` | `ef4444` (red) | Overtime |
+| `color_short_break` | `3b82f6` (blue) | Short Break |
+| `color_long_break` | `a855f7` (purple) | Long Break |
+| `color_stopwatch` | `f59e0b` (amber) | Stopwatch |
+| `color_countdown` | `f97316` (orange) | Countdown |
 
 **Example — Pink focus, cyan breaks:**
 ```
-timer_overlay.html?color_focus=ec4899&color_short=06b6d4&color_long=8b5cf6
+timer_overlay.html?color_focus=ec4899&color_short_break=06b6d4&color_long_break=8b5cf6
 ```
 
 ### Size Recommendations

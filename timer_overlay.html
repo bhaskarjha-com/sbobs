@@ -4,9 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>SessionPulse — Timer Overlay</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
     --focus-color: #22c55e;
@@ -38,7 +35,7 @@
     justify-content: center;
     width: var(--size);
     height: var(--size);
-    font-family: 'Inter', -apple-system, sans-serif;
+    font-family: 'Segoe UI Variable', 'Segoe UI', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
     overflow: hidden;
   }
 
@@ -225,11 +222,7 @@ if (SIZE !== 220) {
 
 // Apply custom font
 if (CUSTOM_FONT) {
-  const link = document.createElement('link');
-  link.href = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(CUSTOM_FONT)}:wght@300;400;600;700&display=swap`;
-  link.rel = 'stylesheet';
-  document.head.appendChild(link);
-  document.body.style.fontFamily = `'${CUSTOM_FONT}', 'Inter', sans-serif`;
+  document.body.style.fontFamily = `'${CUSTOM_FONT}', 'Segoe UI Variable', 'Segoe UI', 'Inter', sans-serif`;
 }
 
 // Apply custom colors from URL
@@ -241,7 +234,7 @@ if (CUSTOM_FONT) {
   }
 });
 
-const POLL_INTERVAL = 500;
+const POLL_INTERVAL = 750;
 const CIRCUMFERENCE = 2 * Math.PI * 100;
 
 const ring = document.getElementById('ring');
@@ -396,8 +389,10 @@ function update(state) {
 }
 
 async function poll() {
+  if (pollStopped || pollInFlight) return;
+  pollInFlight = true;
   try {
-    const resp = await fetch('session_state.json?t=' + Date.now());
+    const resp = await fetch('session_state.json?t=' + Date.now(), { cache: 'no-store' });
     if (resp.ok) {
       const state = await resp.json();
       lastState = state;
@@ -407,11 +402,24 @@ async function poll() {
     }
   } catch (e) {
     update(lastState);
+  } finally {
+    pollInFlight = false;
+    if (!pollStopped) {
+      pollTimer = setTimeout(poll, POLL_INTERVAL);
+    }
   }
 }
 
+let pollInFlight = false;
+let pollTimer = null;
+let pollStopped = false;
+
+window.addEventListener('beforeunload', () => {
+  pollStopped = true;
+  if (pollTimer) clearTimeout(pollTimer);
+});
+
 poll();
-setInterval(poll, POLL_INTERVAL);
 </script>
 </body>
 </html>

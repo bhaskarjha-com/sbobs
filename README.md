@@ -1,186 +1,121 @@
-<p align="center">
-  <img src="assets/banner.png" alt="SessionPulse" width="100%">
-</p>
+# SessionPulse
 
-<p align="center">
-  <strong>Session automation engine for OBS Studio</strong><br>
-  One timer orchestrates your scenes, audio, filters, overlays, and sources.<br>
-  Pure Lua. Zero dependencies. Drag-and-drop install.
-</p>
+**Session automation engine for OBS Studio** — Pomodoro timer, scene switching, volume ducking, overlays, and more.
 
-<p align="center">
-  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-5.4.0-6366f1?style=flat-square" alt="Version"></a>
-  <a href="https://github.com/bhaskarjha-com/sbobs/actions/workflows/test.yml"><img src="https://img.shields.io/github/actions/workflow/status/bhaskarjha-com/sbobs/test.yml?style=flat-square&label=tests" alt="Tests"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-22c55e?style=flat-square" alt="License"></a>
-  <a href="https://obsproject.com"><img src="https://img.shields.io/badge/OBS_Studio-28%2B-1a1a2e?style=flat-square" alt="OBS"></a>
-  <a href="#compatibility"><img src="https://img.shields.io/badge/platform-Win%20%7C%20Mac%20%7C%20Linux-94a3b8?style=flat-square" alt="Platform"></a>
-</p>
+![banner](assets/banner.png)
+
+> One script. Zero dependencies. Full automation.
+
+SessionPulse turns OBS into a productivity cockpit. Start a focus timer, and it handles everything: switching scenes, ducking music, muting your mic, swapping backgrounds, playing alerts — all automatically. When the session ends, it transitions to break mode and reverses everything.
 
 ---
 
-## Quick Start
+## ✨ Features
+
+| Category | What It Does |
+|----------|-------------|
+| **Timer Modes** | Pomodoro, Stopwatch, Countdown, Custom Intervals |
+| **Scene Switching** | Auto-switch OBS scenes per session type |
+| **Volume Ducking** | Smooth fade between focus/break volume levels |
+| **Mic Control** | Auto-mute during focus, unmute during breaks |
+| **Filter Toggle** | Enable/disable OBS filters per session |
+| **Source Visibility** | Hide distracting sources during focus |
+| **Warning Alerts** | 5-min, 1-min, and break-ending sound alerts |
+| **Chapter Markers** | Auto-insert recording chapters at transitions |
+| **Session Labels** | Name what you're working on — tracked in CSV |
+| **Daily Focus Goal** | Set a target, track progress in the dock |
+| **Focus Streak** | Track consecutive completed focus sessions 🔥 |
+| **Overlays** | Circular ring + horizontal bar (themeable) |
+| **Control Dock** | Clickable buttons inside OBS via WebSocket |
+| **Mobile Remote** | Control from your phone over WiFi |
+| **Stats Dashboard** | 7-day chart, streaks, completion rate |
+| **State File API** | 35-field JSON updated every second for integrations |
+| **Session Logging** | CSV history for analytics |
+| **Persistence** | Survives OBS restarts with atomic state saves |
+
+---
+
+## 🚀 Quick Start
+
+### 1. Load the Script
+
+1. Download or `git clone https://github.com/bhaskarjha-com/sbobs.git`
+2. In OBS: **Tools → Scripts → + → select `session_pulse.lua`**
+
+### 2. One-Click Setup
+
+Click **🚀 Quick Setup** in the script panel. Done.
+
+This creates text sources, an overlay, focus/break scenes — and wires everything together.
+
+### 3. Set Hotkeys
+
+**Settings → Hotkeys → search "SessionPulse":**
+
+| Hotkey | Suggested | Action |
+|--------|-----------|--------|
+| Start / Pause | `F9` | Toggle timer |
+| Stop | `F10` | End session |
+| Skip | `F11` | Next session |
+
+### 4. Press Start
+
+Hit your Start hotkey. Watch the magic.
+
+> **Full walkthrough:** [Getting Started Guide](docs/getting-started.md)
+
+---
+
+## 📸 Screenshots
+
+| Control Dock | Ring Overlay | Stats Dashboard |
+|:---:|:---:|:---:|
+| ![dock](assets/dock.png) | ![overlay](assets/overlay.png) | ![stats](assets/stats.png) |
+
+---
+
+## 📖 Documentation
+
+| Guide | Description |
+|-------|-------------|
+| [Getting Started](docs/getting-started.md) | Zero-to-hero setup in ~10 minutes |
+| [Automation Guide](docs/automation-guide.md) | Scene switching, volume ducking, mic, filters, chapters |
+| [Overlay Customization](docs/overlay-customization.md) | Themes, colors, sizes, URL parameters |
+| [Mobile Remote](docs/mobile-remote.md) | Control from your phone |
+| [Integrations](docs/integrations.md) | Nightbot, Stream Deck, custom tools |
+| [FAQ & Troubleshooting](docs/faq.md) | 30+ issues organized by category |
+| [Architecture](docs/architecture.md) | Developer reference: state machine, code map, data flows |
+
+---
+
+## 🏗️ Project Structure
 
 ```
-1. Clone or download this folder
-2. OBS → Tools → Scripts → + → select session_pulse.lua
-3. Click "🚀 Quick Setup" — sources, scenes, and overlay created automatically
-4. Set hotkeys (Settings → Hotkeys → search "SessionPulse")
-5. Press Start. Done.
+session_pulse.lua          ← Core engine (Lua, runs inside OBS)
+                              ↓ writes
+                         session_state.json    ← Public state API (35 fields, updated every second)
+                              ↑ reads
+┌──────────────────┬──────────────────┬────────────────┬──────────────┐
+│ timer_dock.html  │ timer_overlay.html│ timer_stats.html│ timer_remote │
+│ (Control Dock)   │ (Ring Overlay)   │ (Stats Page)   │ (Mobile)     │
+│ WebSocket + Poll │ Poll only        │ CSV + Poll     │ WebSocket    │
+└──────────────────┴──────────────────┴────────────────┴──────────────┘
+timer_overlay_bar.html     ← Horizontal bar overlay (Poll only)
+shared.js                  ← ES module utilities for custom integrations
 ```
 
-> **New to OBS scripting?** Read the [Getting Started Guide](docs/getting-started.md) — it walks through every click.
-
 ---
 
-## Preview
+## 📊 State File API
 
-<p align="center">
-  <img src="assets/overlay.png" alt="Circular timer overlay" width="220">
-  &nbsp;&nbsp;&nbsp;&nbsp;
-  <img src="assets/dock.png" alt="Dockable control panel" width="280">
-</p>
+`session_state.json` is the integration point — any tool that reads JSON can connect.
 
-<p align="center">
-  <em>Circular ring overlay (left) — Dockable control panel (right)</em>
-</p>
-
-<p align="center">
-  <img src="assets/stats.png" alt="Productivity stats dashboard" width="600">
-</p>
-
-<p align="center">
-  <em>Productivity stats dashboard with 7-day chart and session history</em>
-</p>
-
----
-
-## What It Does
-
-SessionPulse is a **session automation engine** — not just a timer. It transforms OBS into a fully automated studio that reacts to your work/break cycle.
-
-| You get... | Instead of... |
-|-----------|--------------| 
-| Timer auto-switches your scene to "Break" | Manually clicking scenes mid-stream |
-| Music volume fades to 30% during focus | Dragging the volume slider every time |
-| Mic mutes during focus, unmutes on break | Fumbling with mute hotkeys |
-| Beautiful overlay ring shows progress | A plain text counter |
-| Session history CSV tracks your productivity | No record of what you did |
-| Chat bot gets `Focus 20:34 (3/6)` | Copying timer values manually |
-| Chapter markers appear in recordings | Editing chapter timestamps by hand |
-
----
-
-## Features
-
-### Timer Engine
-- **4 modes** — Pomodoro, Stopwatch (count up), Countdown (single), Custom Intervals
-- **Wallclock-based** — drift-proof, never loses time under CPU load
-- **"Ends at" display** — shows when the session finishes (e.g., "Ends 15:45")
-- **Session labels** — name what you're working on, saved to CSV and state JSON
-- **Daily focus goal** — set a daily target, track progress across OBS restarts
-- **Focus streak** — tracks consecutive completed focus sessions (🔥3 in a row!)
-- **Overtime** — optional negative timer counts up in red instead of auto-switching
-- **Crash resilient** — auto-saves state with atomic writes, resume after OBS restart
-- **Time adjustment** — add or subtract minutes mid-session via hotkey
-
-### OBS Automation
-- **Scene switching** — auto-switch per session type (Focus → Break scene)
-- **Volume ducking** — smooth configurable fade (1–15s) between focus/break volume levels
-- **Mic control** — auto-mute/unmute per session type
-- **Filter toggling** — enable/disable source filters per session type
-- **Source visibility** — auto-hide sources during focus
-- **Chapter markers** — auto-insert at session transitions (OBS 30.2+)
-- **Background media** — swap images/videos per session type
-- **Stream-aware** — auto-start timer when you go live, auto-stop when stream ends
-- **Warning alerts** — configurable sounds at 5min, 1min, and before break ends
-
-### Visual Overlays
-- **Circular ring overlay** — animated progress ring with session-colored glow
-- **Horizontal bar overlay** — progress bar for top/bottom of stream
-- **4 themes** — Default, Neon, Minimal, Glassmorphism
-- **URL-configurable** — size, colors, fonts, visibility via URL parameters
-
-### Control Interfaces
-- **Dockable control panel** — dark-themed OBS dock with WebSocket buttons
-- **Mobile remote** — phone-friendly control via WebSocket
-- **Stats dashboard** — 7-day chart, streaks, session history with labels
-- **6 hotkeys** — Start/Pause, Stop, Skip, Add Time, Subtract Time, Reset
-
-### Data & Analytics
-- **Session history log** — append-only CSV with timestamps, durations, and labels
-- **Chat-ready status** — pre-formatted string for Nightbot/StreamElements
-- **State JSON API** — 35+ fields for external tools (bots, Stream Deck, apps)
-
----
-
-## Use Cases
-
-| Stream Type | Focus Session | Break Session |
-|------------|---------------|---------------|
-| 📚 Study with me | Silent study | Chat interaction |
-| 🏋️ HIIT workout | Exercise interval | Rest period |
-| 🍳 Cooking | Prep / Cook | Plating / Chat |
-| 🧘 Meditation | Sit meditation | Walking break |
-| 🎙️ Podcast | Guest segment | Transition / Ads |
-| 🎨 Creative | Drawing / Coding | Showcase / Feedback |
-| 📺 Event | Main content | Intermission |
-| 🤝 Body doubling | Focused work | Accountability check-in |
-
----
-
-## 📚 Documentation
-
-| Guide | Audience | What You'll Learn |
-|-------|----------|------------------|
-| **[Getting Started](docs/getting-started.md)** | Beginners | Install, configure, and run your first session — every click explained |
-| **[Overlay Customization](docs/overlay-customization.md)** | Visual streamers | Themes, colors, sizes, fonts, and setup recipes |
-| **[Automation Guide](docs/automation-guide.md)** | Power users | Scene switching, volume ducking, mic, filters, chapters, custom intervals |
-| **[Integrations](docs/integrations.md)** | Bot builders | Nightbot, Stream Deck, custom tools — with code examples |
-| **[Mobile Remote](docs/mobile-remote.md)** | Phone users | Phone setup, network config, save as home screen app |
-| **[FAQ & Troubleshooting](docs/faq.md)** | Everyone | 30+ common issues and solutions |
-
----
-
-## Installation
-
-### Requirements
-- OBS Studio **28+** (chapter markers need 30.2+)
-- obs-websocket **5.x** (built into OBS 28+ — enable in Tools → WebSocket Server Settings)
-- No Python. No npm. No compilation. No external dependencies.
-
-### Steps
-
-1. **Download** — clone or download this folder
-2. **Load** — OBS → **Tools** → **Scripts** → click **+** → select `session_pulse.lua`
-3. **Configure** — pick your sources from the dropdowns in the script panel
-4. **Optional** — add overlay HTML files as Browser Sources
-
-> Need detailed steps? See the [Getting Started Guide](docs/getting-started.md).
-
----
-
-## Hotkeys
-
-**Settings** → **Hotkeys** → search "SessionPulse":
-
-| Hotkey | Action |
-|--------|--------|
-| Start / Pause | Toggle timer |
-| Stop | Stop timer |
-| Skip Session | Jump to next session |
-| Add Time | Add N minutes (configurable) |
-| Subtract Time | Subtract N minutes |
-| Reset All | Full reset |
-
----
-
-## State File API
-
-`session_state.json` is the **public API** for external tools. Updated every second:
+<details>
+<summary><strong>All 35 fields</strong> (click to expand)</summary>
 
 ```json
 {
-  "version": "5.4.0",
+  "version": "5.4.1",
   "timer_mode": "pomodoro",
   "is_running": true,
   "is_paused": false,
@@ -190,84 +125,68 @@ SessionPulse is a **session automation engine** — not just a timer. It transfo
   "elapsed_seconds": 266,
   "progress_percent": 18,
   "ends_at": "15:45",
-  "chat_status_line": "Focus 20:34 (2/6)",
-  "session_label": "Math homework",
-  "focus_streak": 2,
-  "daily_focus_seconds": 7200,
-  "daily_goal_seconds": 14400,
+  "cycle_count": 1,
   "completed_focus_sessions": 2,
   "goal_sessions": 6,
-  "next_session_type": "Short Break",
+  "total_focus_seconds": 3000,
+  "show_transition": false,
+  "transition_message": "",
+  "custom_segment_name": "",
+  "custom_segment_index": 1,
+  "custom_segment_count": 0,
   "is_overtime": false,
-  "timestamp": 1743385200
+  "overtime_seconds": 0,
+  "next_session_type": "Short Break",
+  "next_session_in": 1234,
+  "sessions_remaining": 4,
+  "break_suggestion": "Stretch!",
+  "stream_duration": 7200,
+  "chat_status_line": "Focus 20:34 (2/6)",
+  "session_label": "Math homework",
+  "daily_focus_seconds": 7200,
+  "daily_goal_seconds": 14400,
+  "focus_streak": 2,
+  "session_epoch": 1711983000,
+  "session_pause_total": 0,
+  "session_target_duration": 1500,
+  "timestamp": 1711983266
 }
 ```
 
-> **20 of 35 fields shown.** Full reference in the [Integrations Guide](docs/integrations.md#key-fields-reference).
+</details>
+
+**Usage examples:** [Integrations Guide](docs/integrations.md)
 
 ---
 
-## File Structure
-
-```
-sbobs/
-├── session_pulse.lua         # Core engine — load this in OBS
-├── shared.js                 # Shared utilities for custom integrations
-├── timer_overlay.html        # Browser Source — circular ring (viewers)
-├── timer_overlay_bar.html    # Browser Source — horizontal bar (viewers)
-├── timer_dock.html           # Custom Browser Dock — control panel (streamer)
-├── timer_stats.html          # Productivity dashboard (streamer)
-├── timer_remote.html         # Mobile remote control (phone)
-├── docs/                     # Guides and documentation
-├── tests/                    # Automated test suites
-│   ├── test_session_pulse.lua    # Lua core logic (67 tests)
-│   └── test_frontend.js          # JS frontend logic (55 tests)
-├── assets/                   # Preview images for documentation
-├── CONTRIBUTING.md           # Contribution guide
-├── CHANGELOG.md              # Version history
-├── README.md
-├── LICENSE
-└── .gitignore
-```
-
----
-
-## Testing
+## 🧪 Testing
 
 ```bash
-lua tests/test_session_pulse.lua    # 67 tests: CSV, JSON, timing, parsing
-node tests/test_frontend.js         # 55 tests: CSV parser, formatting, badges
+# Lua core tests (67 tests)
+lua tests/test_session_pulse.lua
+
+# JavaScript frontend tests (55 tests)
+node tests/test_frontend.js
 ```
 
-Both return exit code 1 on failure — CI-ready.
+CI runs on every push via [GitHub Actions](.github/workflows/test.yml).
 
 ---
 
-## Compatibility
+## 🤝 Contributing
 
-| Component | Requirement |
-|-----------|-------------|
-| OBS Studio | 28+ |
-| Chapter markers | OBS 30.2+ |
-| Filter toggling | OBS 30.2+ |
-| obs-websocket | 5.x (built into OBS 28+) |
-| Platforms | Windows, macOS, Linux |
-| Dependencies | None |
+See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines, architecture overview, and the manual testing checklist.
 
 ---
 
-## Contributing
+## 📋 Changelog
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for architecture overview, design decisions, and how to submit changes.
+See [CHANGELOG.md](CHANGELOG.md) for the full version history.
 
----
-
-## License
-
-MIT — see [LICENSE](LICENSE)
+**Current version:** 5.4.1
 
 ---
 
-<p align="center">
-  <sub>Built for streamers who take their sessions seriously.</sub>
-</p>
+## 📄 License
+
+[MIT](LICENSE) — Bhaskar Jha

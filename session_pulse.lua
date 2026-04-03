@@ -1,5 +1,5 @@
 --[[
-    SessionPulse v5.4.0
+    SessionPulse v5.4.1
     Session automation engine for OBS Studio.
     Wallclock-based timing, WebSocket dock control, scene/source/filter/volume
     automation, warning alerts, time adjustment, session labeling, daily goal
@@ -45,7 +45,6 @@ local show_transition = false
 local transition_timer = 0
 local transition_message = ""
 local has_pending_resume = false
-local pending_scene_switch = nil
 local suggestion_index = 0
 local custom_segments = {}
 local custom_segment_index = 1
@@ -199,6 +198,9 @@ local hotkey_add_time = obs.OBS_INVALID_HOTKEY_ID
 local hotkey_sub_time = obs.OBS_INVALID_HOTKEY_ID
 local hotkey_reset = obs.OBS_INVALID_HOTKEY_ID
 
+-- Queued control actions
+local pending_control_actions = {}
+
 ------------------------------------------------------------------------
 -- 4. Helpers
 --
@@ -218,6 +220,24 @@ local function mark_dirty()
     state_dirty = true
 end
 
+local function queue_control_action(action, origin)
+    if not action or action == "" then return end
+    pending_control_actions[#pending_control_actions + 1] = {
+        action = action,
+        origin = origin or "unknown"
+    }
+    log("Control queued (" .. (origin or "unknown") .. "): " .. action)
+end
+
+local function has_pending_control_action(action)
+    for i = 1, #pending_control_actions do
+        if pending_control_actions[i].action == action then
+            return true
+        end
+    end
+    return false
+end
+
 local function json_escape(str)
     if not str then return "" end
     str = str:gsub('\\', '\\\\')
@@ -225,8 +245,9 @@ local function json_escape(str)
     str = str:gsub('\n', '\\n')
     str = str:gsub('\r', '\\r')
     str = str:gsub('\t', '\\t')
-    -- Escape control characters (0x00-0x1F)
-    str = str:gsub('[%c]', function(c)
+    -- Escape remaining control characters (0x00-0x1F) that weren't handled above.
+    -- Exclude \n (0x0A), \r (0x0D), \t (0x09) since they've already been replaced.
+    str = str:gsub('[%z\1-\8\11\12\14-\31]', function(c)
         return string.format('\\u%04x', string.byte(c))
     end)
     return str
@@ -367,7 +388,7 @@ local function log_session(stype, duration, completed)
     local csv_label = session_label or ""
     csv_label = csv_label:gsub('"', '""')
 
-    file:write(string.format("%s,%s,%s,%d,%s,%s,%d,\"%s\"\n",
+    file:write(string.format("\"%s\",\"%s\",\"%s\",%d,%s,\"%s\",%d,\"%s\"\n",
         os.date("%Y-%m-%d"),
         os.date("%H:%M:%S"),
         stype,
@@ -397,7 +418,9 @@ local function compute_daily_focus()
         if first_line then
             first_line = false  -- skip header
         else
-            local date, _, stype, dur = line:match("^([^,]+),([^,]+),([^,]+),(%d+)")
+            -- log_session wraps fields in quotes: "date","time","type",duration,...
+            -- Strip optional surrounding quotes from each field before matching
+            local date, _, stype, dur = line:match('^"?([^",]+)"?,([^,]+),"?([^",]+)"?,(%d+)')
             if date == today and stype == "Focus" then
                 total = total + (tonumber(dur) or 0)
             end
@@ -790,37 +813,34 @@ end
 -- 8. Scene Switching
 --
 -- Automated OBS scene transitions based on session state.
--- Functions: do_scene_switch, schedule_scene_switch, process_pending_scene_switch
--- Debugging: Verify scene names match exactly if switching fails.
+-- Functions: schedule_scene_switch (sets flag), scene switch is executed
+--            in script_tick() to avoid cross-thread deadlock.
+--
+-- ARCHITECTURE NOTE — WHY script_tick AND NOT timer_add:
+-- obs_frontend_set_current_scene() posts to the Qt UI thread and blocks.
+-- When called from a timer_add callback (graphics thread, Lua mutex held),
+-- if the Qt UI thread needs the Lua mutex for any reason, both threads
+-- wait for each other → DEADLOCK → OBS "Not Responding".
+-- script_tick() runs in the main application loop's execution context,
+-- which is the documented safe context for frontend API calls from Lua.
 ------------------------------------------------------------------------
-local function do_scene_switch()
+local pending_scene_name = nil       -- target scene name, or nil if no switch pending
+local pending_scene_epoch = 0        -- os.time() when the switch was requested
+local scene_switch_cooldown = 0      -- os.clock() of last executed switch
+
+local function schedule_scene_switch()
     if not enable_scene_switching then return end
     local scene_map = {
         Focus = focus_scene,
         ["Short Break"] = short_break_scene,
         ["Long Break"] = long_break_scene
     }
-    local target_scene = scene_map[session_type]
-    if not target_scene or target_scene == "" then return end
+    local target = scene_map[session_type]
+    if not target or target == "" then return end
 
-    local source = obs.obs_get_source_by_name(target_scene)
-    if source then
-        obs.obs_frontend_set_current_scene(source)
-        obs.obs_source_release(source)
-        log("Switched to scene: " .. target_scene)
-    end
-end
-
-local function schedule_scene_switch()
-    if not enable_scene_switching then return end
-    pending_scene_switch = true
-end
-
-local function process_pending_scene_switch()
-    if pending_scene_switch then
-        pending_scene_switch = nil
-        do_scene_switch()
-    end
+    pending_scene_name = target
+    pending_scene_epoch = os.time()
+    log("Scene switch queued → " .. target)
 end
 
 ------------------------------------------------------------------------
@@ -909,9 +929,9 @@ local function start_volume_fade(target_vol)
     fade_active = true
 end
 
-local function process_volume_fade()
+local function process_volume_fade(seconds_passed)
     if not fade_active then return end
-    fade_elapsed = fade_elapsed + 1
+    fade_elapsed = fade_elapsed + seconds_passed
     local t = math.min(fade_elapsed / fade_duration, 1.0)
     -- Ease-in-out
     local eased = t < 0.5 and (2 * t * t) or (1 - (-2 * t + 2) ^ 2 / 2)
@@ -1027,8 +1047,8 @@ end
 local function create_progress_bar(elapsed, total)
     if not show_progress_bar or total <= 0 then return "" end
     local filled = math.floor((elapsed / total) * progress_bar_length)
-    filled = math.min(filled, progress_bar_length)
-    return string.rep("█", filled) .. string.rep("░", progress_bar_length - filled)
+    filled = math.max(0, math.min(filled, progress_bar_length))
+    return string.rep("█", filled) .. string.rep("░", math.max(0, progress_bar_length - filled))
 end
 
 local function get_session_message()
@@ -1084,12 +1104,15 @@ update_display_texts = function()
 
     -- Progress bar
     if show_progress_bar and timer_mode ~= "stopwatch" then
-        local total = get_duration_for_session(session_type)
+        local total = session_target_duration
+        if total <= 0 then total = get_duration_for_session(session_type) end
         if is_overtime then
             update_obs_source_text(progress_bar_source,
                 string.rep("█", progress_bar_length))
         else
-            local elapsed = total - current_time
+            -- Use freshly computed time to avoid stale current_time during transitions
+            local fresh_time = (is_running and session_epoch > 0) and compute_current_time() or current_time
+            local elapsed = total - fresh_time
             update_obs_source_text(progress_bar_source, create_progress_bar(elapsed, total))
         end
     else
@@ -1251,13 +1274,19 @@ end
 -- Debugging: If time freezes, verify `timer_tick` is still registered via `obs.timer_add`.
 ------------------------------------------------------------------------
 local function fire_warning_alert()
-    -- Uses focus_alert_sound_path as the warning sound (same alert source)
+    -- Pick the correct alert sound based on current session type
     if not alert_source_name or alert_source_name == "" then return end
-    if not focus_alert_sound_path or focus_alert_sound_path == "" then return end
+    local sound_map = {
+        Focus = focus_alert_sound_path,
+        ["Short Break"] = short_break_alert_sound_path,
+        ["Long Break"] = long_break_alert_sound_path
+    }
+    local sound_path = sound_map[session_type] or focus_alert_sound_path
+    if not sound_path or sound_path == "" then return end
     local source = obs.obs_get_source_by_name(alert_source_name)
     if source then
         local settings = obs.obs_data_create()
-        obs.obs_data_set_string(settings, "local_file", focus_alert_sound_path)
+        obs.obs_data_set_string(settings, "local_file", sound_path)
         obs.obs_data_set_bool(settings, "is_local_file", true)
         obs.obs_source_update(source, settings)
         obs.obs_data_release(settings)
@@ -1274,14 +1303,18 @@ local function check_warning_alerts(time_remaining)
     -- 5-minute warning (flag-only: fires once when crossing the threshold)
     if warning_5min_enabled and not warning_5min_fired and time_remaining <= 300 then
         warning_5min_fired = true
-        fire_warning_alert()
+        if not has_pending_control_action("warning_alert") then
+            queue_control_action("warning_alert", "timer")
+        end
         log("Warning: 5 minutes remaining")
     end
 
     -- 1-minute warning
     if warning_1min_enabled and not warning_1min_fired and time_remaining <= 60 then
         warning_1min_fired = true
-        fire_warning_alert()
+        if not has_pending_control_action("warning_alert") then
+            queue_control_action("warning_alert", "timer")
+        end
         log("Warning: 1 minute remaining")
     end
 
@@ -1291,15 +1324,14 @@ local function check_warning_alerts(time_remaining)
        and (timer_mode == "pomodoro" or timer_mode == "custom" or timer_mode == "countdown")
        and time_remaining <= warning_break_end_seconds then
         warning_break_end_fired = true
-        fire_warning_alert()
+        if not has_pending_control_action("warning_alert") then
+            queue_control_action("warning_alert", "timer")
+        end
         log("Warning: session ending in " .. warning_break_end_seconds .. "s")
     end
 end
 
 local function timer_tick()
-    process_pending_scene_switch()
-    process_volume_fade()
-
     if not is_running or is_paused then
         -- Still save periodically when paused (for UI polling)
         if is_running and is_paused then
@@ -1338,13 +1370,17 @@ local function timer_tick()
                     is_overtime = true
                     overtime_epoch = os.time()
                     overtime_seconds = 0
-                    play_alert_sound()
+                    if not has_pending_control_action("play_alert_sound") then
+                        queue_control_action("play_alert_sound", "timer")
+                    end
                     log("Overtime started for " .. session_type)
                 elseif is_overtime then
                     -- Wallclock-based overtime (drift-proof)
                     overtime_seconds = os.time() - overtime_epoch
                 else
-                    switch_session()
+                    if not has_pending_control_action("auto_advance") then
+                        queue_control_action("auto_advance", "timer")
+                    end
                 end
             end
         end
@@ -1480,6 +1516,8 @@ local function stop_timer()
     overtime_seconds = 0
     overtime_epoch = 0
     focus_streak = 0
+    completed_focus_sessions = 0
+    pending_scene_name = nil
 
     -- Reset to correct initial state for current timer mode
     if timer_mode == "pomodoro" then
@@ -1536,8 +1574,9 @@ end
 
 local function skip_session()
     if not is_running then
-        is_running = true
-        is_paused = false
+        -- Properly initialize timer state before skipping
+        start_timer()
+        if not is_running then return end  -- start_timer may fail (e.g. no custom segments)
     end
 
     if timer_mode == "stopwatch" then
@@ -1573,11 +1612,22 @@ local function add_time()
 
     local add_seconds = time_adjust_increment * 60
     session_target_duration = session_target_duration + add_seconds
+
+    if is_overtime then
+        if session_target_duration > get_session_elapsed() then
+            is_overtime = false
+            overtime_epoch = 0
+            overtime_seconds = 0
+            log("Added time recovered session from overtime")
+        end
+    end
+
     current_time = compute_current_time()
 
     -- Reset warnings that might fire again
     if current_time > 300 then warning_5min_fired = false end
     if current_time > 60 then warning_1min_fired = false end
+    if current_time > warning_break_end_seconds then warning_break_end_fired = false end
 
     mark_dirty()
     log("Added " .. time_adjust_increment .. " min — now " .. format_time(current_time) .. " remaining")
@@ -1594,6 +1644,21 @@ local function subtract_time()
     current_time = compute_current_time()
     mark_dirty()
     log("Subtracted " .. time_adjust_increment .. " min — now " .. format_time(current_time) .. " remaining")
+
+    -- Only trigger session switch if NOT paused — subtracting time while paused
+    -- should not unexpectedly advance to the next session
+    if not is_paused and current_time <= 0 and not show_transition then
+        if enable_overtime and not is_overtime then
+            is_overtime = true
+            overtime_epoch = os.time()
+            overtime_seconds = 0
+            play_alert_sound()
+            log("Overtime started for " .. session_type)
+        elseif not is_overtime then
+            switch_session()
+        end
+    end
+
     update_display_texts()
     save_state(true)
 end
@@ -1608,6 +1673,121 @@ local function resume_previous_session()
     end
 end
 
+-- OBS invokes button/hotkey/frontend callbacks while it is inside its callback
+-- machinery. Queue state-changing controls and execute them in script_tick()
+-- so session transitions happen from one predictable context.
+local function process_pending_control_actions()
+    local processed = 0
+
+    while #pending_control_actions > 0 and processed < 8 do
+        local item = table.remove(pending_control_actions, 1)
+        processed = processed + 1
+
+        log("Control executing (" .. item.origin .. "): " .. item.action)
+
+        if item.action == "start" then
+            start_timer()
+        elseif item.action == "pause" then
+            toggle_pause()
+        elseif item.action == "stop" then
+            stop_timer()
+        elseif item.action == "skip" then
+            skip_session()
+        elseif item.action == "reset" then
+            reset_timer()
+        elseif item.action == "add_time" then
+            add_time()
+        elseif item.action == "subtract_time" then
+            subtract_time()
+        elseif item.action == "resume_previous_session" then
+            resume_previous_session()
+        elseif item.action == "auto_advance" then
+            switch_session()
+        elseif item.action == "warning_alert" then
+            fire_warning_alert()
+        elseif item.action == "play_alert_sound" then
+            play_alert_sound()
+        elseif item.action == "stream_started_start" then
+            if auto_start_on_stream and not is_running then
+                start_timer()
+            end
+        elseif item.action == "stream_stopped_stop" then
+            if auto_stop_on_stream_end and is_running then
+                show_session_summary()
+                stop_timer()
+            elseif is_running then
+                show_session_summary()
+            end
+        else
+            log("Warning: unknown queued control action '" .. tostring(item.action) .. "'")
+        end
+    end
+end
+
+local function on_start_button_clicked(props, prop)
+    queue_control_action("start", "button")
+    return true
+end
+
+local function on_pause_button_clicked(props, prop)
+    queue_control_action("pause", "button")
+    return true
+end
+
+local function on_stop_button_clicked(props, prop)
+    queue_control_action("stop", "button")
+    return true
+end
+
+local function on_skip_button_clicked(props, prop)
+    queue_control_action("skip", "button")
+    return true
+end
+
+local function on_reset_button_clicked(props, prop)
+    queue_control_action("reset", "button")
+    return true
+end
+
+local function on_add_time_button_clicked(props, prop)
+    queue_control_action("add_time", "button")
+    return true
+end
+
+local function on_subtract_time_button_clicked(props, prop)
+    queue_control_action("subtract_time", "button")
+    return true
+end
+
+local function on_resume_button_clicked(props, prop)
+    queue_control_action("resume_previous_session", "button")
+    return true
+end
+
+if rawget(_G, "__SESSION_PULSE_TEST_HOOKS") then
+    _G.__SESSION_PULSE_TEST_HOOKS.on_start_button_clicked = on_start_button_clicked
+    _G.__SESSION_PULSE_TEST_HOOKS.on_pause_button_clicked = on_pause_button_clicked
+    _G.__SESSION_PULSE_TEST_HOOKS.on_stop_button_clicked = on_stop_button_clicked
+    _G.__SESSION_PULSE_TEST_HOOKS.on_skip_button_clicked = on_skip_button_clicked
+    _G.__SESSION_PULSE_TEST_HOOKS.on_reset_button_clicked = on_reset_button_clicked
+    _G.__SESSION_PULSE_TEST_HOOKS.on_add_time_button_clicked = on_add_time_button_clicked
+    _G.__SESSION_PULSE_TEST_HOOKS.on_subtract_time_button_clicked = on_subtract_time_button_clicked
+    _G.__SESSION_PULSE_TEST_HOOKS.on_resume_button_clicked = on_resume_button_clicked
+    _G.__SESSION_PULSE_TEST_HOOKS.get_pending_control_count = function()
+        return #pending_control_actions
+    end
+    _G.__SESSION_PULSE_TEST_HOOKS.get_runtime_state = function()
+        return {
+            is_running = is_running,
+            is_paused = is_paused,
+            session_type = session_type,
+            current_time = current_time,
+            pending_scene_name = pending_scene_name,
+            completed_focus_sessions = completed_focus_sessions
+        }
+    end
+end
+
 ------------------------------------------------------------------------
 -- 18. Hotkey Callbacks
 --
@@ -1617,32 +1797,32 @@ end
 ------------------------------------------------------------------------
 local function on_hotkey_start_pause(pressed)
     if not pressed then return end
-    toggle_pause()
+    queue_control_action("pause", "hotkey")
 end
 
 local function on_hotkey_stop(pressed)
     if not pressed then return end
-    stop_timer()
+    queue_control_action("stop", "hotkey")
 end
 
 local function on_hotkey_skip(pressed)
     if not pressed then return end
-    skip_session()
+    queue_control_action("skip", "hotkey")
 end
 
 local function on_hotkey_add_time(pressed)
     if not pressed then return end
-    add_time()
+    queue_control_action("add_time", "hotkey")
 end
 
 local function on_hotkey_sub_time(pressed)
     if not pressed then return end
-    subtract_time()
+    queue_control_action("subtract_time", "hotkey")
 end
 
 local function on_hotkey_reset(pressed)
     if not pressed then return end
-    reset_timer()
+    queue_control_action("reset", "hotkey")
 end
 
 ------------------------------------------------------------------------
@@ -1656,18 +1836,12 @@ local function on_frontend_event(event)
     if event == obs.OBS_FRONTEND_EVENT_STREAMING_STARTED then
         log("Stream started")
         stream_start_time = os.time()
-        if auto_start_on_stream and not is_running then
-            start_timer()
-        end
+        queue_control_action("stream_started_start", "frontend_event")
 
     elseif event == obs.OBS_FRONTEND_EVENT_STREAMING_STOPPED then
         log("Stream stopped")
-        if auto_stop_on_stream_end and is_running then
-            show_session_summary()
-            stop_timer()
-        elseif is_running then
-            show_session_summary()
-        end
+        stream_start_time = 0
+        queue_control_action("stream_stopped_stop", "frontend_event")
 
     elseif event == obs.OBS_FRONTEND_EVENT_RECORDING_STARTED then
         log("Recording started")
@@ -1675,6 +1849,12 @@ local function on_frontend_event(event)
             add_chapter_marker()
         end
     end
+end
+
+if rawget(_G, "__SESSION_PULSE_TEST_HOOKS") then
+    _G.__SESSION_PULSE_TEST_HOOKS.on_hotkey_skip = on_hotkey_skip
+    _G.__SESSION_PULSE_TEST_HOOKS.on_frontend_event = on_frontend_event
+    _G.__SESSION_PULSE_TEST_HOOKS.timer_tick = timer_tick
 end
 
 ------------------------------------------------------------------------
@@ -2000,17 +2180,17 @@ function script_properties()
         "🚀  Quick Setup (auto-create sources, scenes, overlay)", quick_setup)
 
     -- ── Controls ──
-    obs.obs_properties_add_button(props, "start_button", "▶  Start", start_timer)
-    obs.obs_properties_add_button(props, "pause_button", "⏸  Pause / Resume", toggle_pause)
-    obs.obs_properties_add_button(props, "stop_button", "⏹  Stop", stop_timer)
-    obs.obs_properties_add_button(props, "skip_button", "⏭  Skip Session", skip_session)
-    obs.obs_properties_add_button(props, "reset_button", "↺  Reset All", reset_timer)
-    obs.obs_properties_add_button(props, "add_time_button", "+  Add Time", add_time)
-    obs.obs_properties_add_button(props, "sub_time_button", "−  Subtract Time", subtract_time)
+    obs.obs_properties_add_button(props, "start_button", "▶  Start", on_start_button_clicked)
+    obs.obs_properties_add_button(props, "pause_button", "⏸  Pause / Resume", on_pause_button_clicked)
+    obs.obs_properties_add_button(props, "stop_button", "⏹  Stop", on_stop_button_clicked)
+    obs.obs_properties_add_button(props, "skip_button", "⏭  Skip Session", on_skip_button_clicked)
+    obs.obs_properties_add_button(props, "reset_button", "↺  Reset All", on_reset_button_clicked)
+    obs.obs_properties_add_button(props, "add_time_button", "+  Add Time", on_add_time_button_clicked)
+    obs.obs_properties_add_button(props, "sub_time_button", "−  Subtract Time", on_subtract_time_button_clicked)
 
     if has_pending_resume then
         obs.obs_properties_add_button(props, "resume_button",
-            "⏪  Resume Previous Session", resume_previous_session)
+            "⏪  Resume Previous Session", on_resume_button_clicked)
     end
 
     -- ── Timer Mode & Durations ──
@@ -2170,6 +2350,8 @@ function script_properties()
         "Short Break Message", obs.OBS_TEXT_DEFAULT)
     obs.obs_properties_add_text(msg_group, "long_break_message",
         "Long Break Message", obs.OBS_TEXT_DEFAULT)
+    obs.obs_properties_add_text(msg_group, "paused_message",
+        "Paused Message", obs.OBS_TEXT_DEFAULT)
     obs.obs_properties_add_text(msg_group, "transition_to_focus_message",
         "→ Focus Transition", obs.OBS_TEXT_DEFAULT)
     obs.obs_properties_add_text(msg_group, "transition_to_short_break_message",
@@ -2218,6 +2400,7 @@ function script_defaults(settings)
     obs.obs_data_set_default_string(settings, "focus_message", "Focus Time")
     obs.obs_data_set_default_string(settings, "short_break_message", "Short Break")
     obs.obs_data_set_default_string(settings, "long_break_message", "Long Break")
+    obs.obs_data_set_default_string(settings, "paused_message", "Paused")
     obs.obs_data_set_default_string(settings, "transition_to_focus_message", "Back to focus time!")
     obs.obs_data_set_default_string(settings, "transition_to_short_break_message", "Time for a short break!")
     obs.obs_data_set_default_string(settings, "transition_to_long_break_message", "Time for a long break!")
@@ -2300,6 +2483,7 @@ local function update_source_config(settings)
     transition_to_focus_message = obs.obs_data_get_string(settings, "transition_to_focus_message")
     transition_to_short_break_message = obs.obs_data_get_string(settings, "transition_to_short_break_message")
     transition_to_long_break_message = obs.obs_data_get_string(settings, "transition_to_long_break_message")
+    paused_message = obs.obs_data_get_string(settings, "paused_message")
 
     focus_alert_sound_path = obs.obs_data_get_string(settings, "focus_alert_sound_path")
     short_break_alert_sound_path = obs.obs_data_get_string(settings, "short_break_alert_sound_path")
@@ -2334,9 +2518,50 @@ end
 -- 23. Lifecycle
 --
 -- Core OBS script entry points: load, save, unload.
--- Functions: script_load, script_save, script_unload
+-- Functions: script_load, script_save, script_unload, script_tick
 -- Debugging: Hotkey registrations happen in `script_load`, unregister in `script_unload`.
 ------------------------------------------------------------------------
+function script_tick(seconds)
+    process_volume_fade(seconds)
+    process_pending_control_actions()
+
+    -- Execute pending scene switch in the SAFE execution context.
+    -- This is the fix for the cross-thread deadlock: obs_frontend_set_current_scene
+    -- must NOT be called from timer_add callbacks (graphics thread, Lua mutex held).
+    -- script_tick runs in the main app loop, which is safe for frontend API calls.
+    if pending_scene_name then
+        -- Cooldown: skip if a switch was executed less than 100ms ago
+        local now = os.clock()
+        if now - scene_switch_cooldown < 0.1 then return end
+
+        -- Stale safety: abandon if request is older than 3 seconds
+        if os.time() - pending_scene_epoch > 3 then
+            log("Scene switch expired (stale): " .. pending_scene_name)
+            pending_scene_name = nil
+            return
+        end
+
+        local target = pending_scene_name
+        pending_scene_name = nil  -- clear BEFORE calling (prevents re-entry)
+
+        local source = obs.obs_get_source_by_name(target)
+        if source then
+            local ok, err = pcall(function()
+                obs.obs_frontend_set_current_scene(source)
+            end)
+            obs.obs_source_release(source)
+            scene_switch_cooldown = os.clock()
+            if ok then
+                log("Switched to scene: " .. target)
+            else
+                log("Scene switch failed: " .. tostring(err))
+            end
+        else
+            log("Scene switch failed — source not found: " .. target)
+        end
+    end
+end
+
 function script_load(settings)
     obs.timer_add(timer_tick, 1000)
 

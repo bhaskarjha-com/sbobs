@@ -9,7 +9,7 @@ Common issues and their solutions, organized by category.
 ### Timer doesn't start
 
 1. **Check the Script Log:** Tools → Scripts → Script Log. Look for errors.
-2. **Loaded correctly?** You should see `[SessionPulse] Loaded v5.4.0` in the log.
+2. **Loaded correctly?** You should see `[SessionPulse] Loaded v5.4.1` in the log.
 3. **Hotkey set?** Go to Settings → Hotkeys → search "SessionPulse". Make sure Start/Pause has a key assigned.
 4. **Custom Intervals format:** If using Custom mode, verify the format is `Name:Minutes,Name:Minutes` — no spaces around colons.
 
@@ -30,6 +30,12 @@ Common issues and their solutions, organized by category.
 - After restarting OBS, look for the **Resume Previous Session** option in the script settings.
 - If `session_state.json` is missing or corrupted, the state can't be restored.
 
+### OBS freezes / "Not Responding" when session transitions
+
+- **Fixed in v5.4.1.** This was a cross-thread deadlock caused by calling `obs_frontend_set_current_scene()` from a `timer_add` callback. The Lua mutex and Qt UI thread would wait on each other.
+- **Solution:** Update to v5.4.1+. Scene switches are now executed in `script_tick()`, which runs in the safe execution context.
+- If you're on an older version: disable **Scene Switching** in the automation settings as a temporary workaround.
+
 ---
 
 ## Overlay Issues
@@ -49,8 +55,8 @@ Common issues and their solutions, organized by category.
 
 ### Overlay colors are wrong
 
-- Custom colors must be hex codes **without** the `#` symbol: `?color_focus=22c55e` ✅ not `?color_focus=#22c55e` ❌
-- Make sure parameter names are exact: `color_focus`, `color_short`, `color_long`, `color_paused`, `color_overtime`
+- Custom colors use hex codes (with or without `#`): `?color_focus=22c55e` or `?color_focus=#22c55e`
+- Parameter names: `color_focus`, `color_short_break`, `color_long_break`, `color_stopwatch`, `color_countdown`
 
 ### Overlay doesn't update / is frozen
 
