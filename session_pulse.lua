@@ -163,6 +163,14 @@ local progress_bar_source = ""
 local background_media_source = ""
 local background_music_source_name = ""
 local alert_source_name = ""
+local status_state = {
+    source_name = "",
+    message_input = "",
+    duration_minutes = 0,
+    current_message = "",
+    active = false,
+    until_epoch = 0
+}
 
 -- Session messages
 local focus_message = "Focus Time"
@@ -212,6 +220,7 @@ local hotkey_reset = obs.OBS_INVALID_HOTKEY_ID
 local pending_control_actions = {}
 local pending_runtime_effects = {}
 local scene_switching_deprecation_logged = false
+local quick_setup_settings = nil
 
 local function get_effective_completed_focus_sessions()
     if timer_mode == "pomodoro" and not is_running and completed_focus_sessions == 0 and starting_session_offset > 0 then
@@ -551,6 +560,11 @@ local function save_state(force)
         ends_at = os.date("%H:%M", now + display_time)
     end
 
+    local active_status_message = ""
+    if status_state.active and status_state.current_message ~= "" then
+        active_status_message = status_state.current_message
+    end
+
     local json = string.format(
         '{\n' ..
         '  "version": "%s",\n' ..
@@ -581,6 +595,9 @@ local function save_state(force)
         '  "stream_duration": %d,\n' ..
         '  "chat_status_line": "%s",\n' ..
         '  "session_label": "%s",\n' ..
+        '  "status_active": %s,\n' ..
+        '  "status_message": "%s",\n' ..
+        '  "status_until_epoch": %d,\n' ..
         '  "daily_focus_seconds": %d,\n' ..
         '  "daily_goal_seconds": %d,\n' ..
         '  "focus_streak": %d,\n' ..
@@ -617,6 +634,9 @@ local function save_state(force)
         stream_dur,
         json_escape(chat_status),
         json_escape(session_label),
+        tostring(status_state.active and active_status_message ~= ""),
+        json_escape(active_status_message),
+        status_state.until_epoch,
         daily_focus_seconds_today + total_focus_seconds,
         daily_goal_minutes * 60,
         focus_streak,
@@ -648,7 +668,35 @@ local function load_state()
     if not content or content == "" then return nil end
 
     local function get_string(key)
-        return content:match('"' .. key .. '":%s*"([^"]*)"')
+        local _, value_start = content:find('"' .. key .. '":%s*"', 1)
+        if not value_start then return nil end
+
+        local chars = {}
+        local escaped = false
+        local i = value_start + 1
+        while i <= #content do
+            local ch = content:sub(i, i)
+            if escaped then
+                if ch == "n" then
+                    chars[#chars + 1] = "\n"
+                elseif ch == "r" then
+                    chars[#chars + 1] = "\r"
+                elseif ch == "t" then
+                    chars[#chars + 1] = "\t"
+                else
+                    chars[#chars + 1] = ch
+                end
+                escaped = false
+            elseif ch == "\\" then
+                escaped = true
+            elseif ch == '"' then
+                break
+            else
+                chars[#chars + 1] = ch
+            end
+            i = i + 1
+        end
+        return table.concat(chars)
     end
     local function get_number(key)
         local val = content:match('"' .. key .. '":%s*(%d+)')
@@ -670,6 +718,9 @@ local function load_state()
         completed_focus_sessions = get_number("completed_focus_sessions"),
         total_focus_seconds = get_number("total_focus_seconds"),
         custom_segment_index = get_number("custom_segment_index"),
+        status_active = get_bool("status_active"),
+        status_message = get_string("status_message"),
+        status_until_epoch = get_number("status_until_epoch"),
         timestamp = get_number("timestamp"),
         -- v5.0 wallclock fields
         session_epoch = get_number("session_epoch"),
@@ -733,6 +784,15 @@ local function apply_saved_state(state)
 
     if state.custom_segment_index and state.timer_mode == "custom" then
         custom_segment_index = state.custom_segment_index
+    end
+
+    status_state.active = state.status_active == true
+    status_state.current_message = state.status_message or status_state.current_message or status_state.message_input or ""
+    status_state.until_epoch = state.status_until_epoch or 0
+    if status_state.active and status_state.until_epoch > 0 and os.time() >= status_state.until_epoch then
+        status_state.active = false
+        status_state.until_epoch = 0
+        status_state.current_message = ""
     end
 
     -- Initialize wallclock state for resume
@@ -1226,6 +1286,18 @@ local function get_session_message()
     return long_break_message
 end
 
+local function update_status_source()
+    if not status_state.source_name or status_state.source_name == "" then return end
+
+    local active_message = ""
+    if status_state.active and status_state.current_message and status_state.current_message ~= "" then
+        active_message = status_state.current_message
+    end
+
+    update_obs_source_text(status_state.source_name, active_message)
+    set_source_enabled_by_name(status_state.source_name, active_message ~= "")
+end
+
 update_display_texts = function()
     local completed_for_display = get_effective_completed_focus_sessions()
 
@@ -1283,6 +1355,8 @@ update_display_texts = function()
     else
         update_obs_source_text(progress_bar_source, "")
     end
+
+    update_status_source()
 end
 
 local function show_session_summary()
@@ -1507,11 +1581,24 @@ local function check_warning_alerts(time_remaining)
 end
 
 local function timer_tick()
+    local status_changed = false
+    if status_state.active and status_state.until_epoch > 0 and os.time() >= status_state.until_epoch then
+        status_state.active = false
+        status_state.until_epoch = 0
+        status_state.current_message = ""
+        log("Status cleared — timed message expired")
+        mark_dirty()
+        status_changed = true
+    end
+
     if not is_running or is_paused then
         -- Still save periodically when paused (for UI polling)
         if is_running and is_paused then
             mark_dirty()
             save_state()
+        elseif status_changed then
+            update_display_texts()
+            save_state(true)
         end
         return
     end
@@ -1570,9 +1657,54 @@ end
 --
 -- Start, stop, pause, skip, reset, and time adjustment commands.
 -- Functions: start_timer, toggle_pause, stop_timer, reset_timer, skip_session,
--- add_time, subtract_time, resume_previous_session
+-- add_time, subtract_time, resume_previous_session, show_status_message,
+-- clear_status_message
 -- Debugging: These wrappers mostly manage state flags; output goes through `save_state()`.
 ------------------------------------------------------------------------
+local function persist_status_settings()
+    if not quick_setup_settings then return end
+    obs.obs_data_set_string(quick_setup_settings, "status_current_message", status_state.current_message or "")
+end
+
+local function show_status_message()
+    local message = status_state.message_input or ""
+    message = message:match("^%s*(.-)%s*$") or ""
+    if message == "" then
+        log("Status message is empty — type a message before showing it")
+        return
+    end
+
+    status_state.active = true
+    status_state.current_message = message
+    if status_state.duration_minutes and status_state.duration_minutes > 0 then
+        status_state.until_epoch = os.time() + (status_state.duration_minutes * 60)
+        log("Status shown for " .. status_state.duration_minutes .. " minute(s)")
+    else
+        status_state.until_epoch = 0
+        log("Status shown until manually cleared")
+    end
+
+    persist_status_settings()
+    mark_dirty()
+    update_display_texts()
+    save_state(true)
+end
+
+local function clear_status_message(log_reason)
+    local had_status = status_state.active or (status_state.current_message and status_state.current_message ~= "")
+    status_state.active = false
+    status_state.until_epoch = 0
+    status_state.current_message = ""
+    persist_status_settings()
+    mark_dirty()
+    update_display_texts()
+    save_state(true)
+
+    if had_status then
+        log(log_reason or "Status cleared")
+    end
+end
+
 local function start_timer()
     if is_running and not is_paused then return end
     if is_paused then
@@ -1883,6 +2015,10 @@ local function process_pending_control_actions()
             subtract_time()
         elseif item.action == "resume_previous_session" then
             resume_previous_session()
+        elseif item.action == "show_status_message" then
+            show_status_message()
+        elseif item.action == "clear_status_message" then
+            clear_status_message()
         elseif item.action == "auto_advance" then
             switch_session()
         elseif item.action == "warning_alert" then
@@ -1975,6 +2111,16 @@ local function on_resume_button_clicked(props, prop)
     return true
 end
 
+local function on_show_status_button_clicked(props, prop)
+    queue_control_action("show_status_message", "button")
+    return true
+end
+
+local function on_clear_status_button_clicked(props, prop)
+    queue_control_action("clear_status_message", "button")
+    return true
+end
+
 if rawget(_G, "__SESSION_PULSE_TEST_HOOKS") then
     _G.__SESSION_PULSE_TEST_HOOKS.on_start_button_clicked = on_start_button_clicked
     _G.__SESSION_PULSE_TEST_HOOKS.on_pause_button_clicked = on_pause_button_clicked
@@ -1984,6 +2130,8 @@ if rawget(_G, "__SESSION_PULSE_TEST_HOOKS") then
     _G.__SESSION_PULSE_TEST_HOOKS.on_add_time_button_clicked = on_add_time_button_clicked
     _G.__SESSION_PULSE_TEST_HOOKS.on_subtract_time_button_clicked = on_subtract_time_button_clicked
     _G.__SESSION_PULSE_TEST_HOOKS.on_resume_button_clicked = on_resume_button_clicked
+    _G.__SESSION_PULSE_TEST_HOOKS.on_show_status_button_clicked = on_show_status_button_clicked
+    _G.__SESSION_PULSE_TEST_HOOKS.on_clear_status_button_clicked = on_clear_status_button_clicked
     _G.__SESSION_PULSE_TEST_HOOKS.get_pending_control_count = function()
         return #pending_control_actions
     end
@@ -1996,7 +2144,10 @@ if rawget(_G, "__SESSION_PULSE_TEST_HOOKS") then
             is_paused = is_paused,
             session_type = session_type,
             current_time = current_time,
-            completed_focus_sessions = completed_focus_sessions
+            completed_focus_sessions = completed_focus_sessions,
+            status_active = status_state.active,
+            status_current_message = status_state.current_message,
+            status_until_epoch = status_state.until_epoch
         }
     end
 end
@@ -2090,17 +2241,6 @@ local function populate_source_list(prop)
     end
 end
 
-local function populate_scene_list(prop)
-    obs.obs_property_list_clear(prop)
-    obs.obs_property_list_add_string(prop, "(None)", "")
-    local scene_names = obs.obs_frontend_get_scene_names()
-    if scene_names then
-        for _, name in ipairs(scene_names) do
-            obs.obs_property_list_add_string(prop, name, name)
-        end
-    end
-end
-
 ------------------------------------------------------------------------
 -- 21. Quick Setup Wizard
 --
@@ -2109,9 +2249,9 @@ end
 -- get_or_create_scene, populate_scene, quick_setup
 -- Debugging: Make sure to re-apply settings `obs_properties_apply_settings` at end.
 ------------------------------------------------------------------------
-local quick_setup_settings = nil   -- reference to current settings, set by script_update
+quick_setup_settings = nil   -- reference to current settings, set by script_update
 
-local function get_text_source_id()
+function get_text_source_id()
     -- Windows: text_gdiplus, Mac/Linux: text_ft2_source
     local sep = package.config:sub(1, 1)
     if sep == "\\" then
@@ -2121,7 +2261,7 @@ local function get_text_source_id()
     end
 end
 
-local function get_or_create_source(name, source_id, settings)
+function get_or_create_source(name, source_id, settings)
     -- Try to find existing source first
     local source = obs.obs_get_source_by_name(name)
     if source then
@@ -2135,7 +2275,7 @@ local function get_or_create_source(name, source_id, settings)
     return nil, false
 end
 
-local function add_source_obj_to_scene(scene, source, x, y)
+function add_source_obj_to_scene(scene, source, x, y)
     if not scene or not source then return end
 
     local source_name = obs.obs_source_get_name(source)
@@ -2151,20 +2291,7 @@ local function add_source_obj_to_scene(scene, source, x, y)
     end
 end
 
-local function get_or_create_scene(name)
-    -- Check if scene already exists
-    local scene_source = obs.obs_get_source_by_name(name)
-    if scene_source then
-        local scene = obs.obs_scene_from_source(scene_source)
-        obs.obs_source_release(scene_source)
-        return scene, false  -- scene, was_created
-    end
-    -- Create new scene
-    local scene = obs.obs_scene_create(name)
-    return scene, true
-end
-
-local function populate_scene(scene, source_list, overlay_source, background_sources, music_source, alert_source)
+function populate_scene(scene, source_list, overlay_source, background_sources, music_source, alert_source)
     if background_sources then
         for _, source in ipairs(background_sources) do
             if source then
@@ -2183,6 +2310,7 @@ local function populate_scene(scene, source_list, overlay_source, background_sou
         { source = source_list[2], x = 700, y = 350 },  -- Timer
         { source = source_list[3], x = 700, y = 450 },  -- Count
         { source = source_list[4], x = 700, y = 490 },  -- Progress
+        { source = source_list[5], x = 700, y = 530 },  -- Status
     }
     for _, p in ipairs(positions) do
         if p.source then
@@ -2230,7 +2358,7 @@ local function add_sessionpulse_sources_to_active_scene(source_list, overlay_sou
     return true
 end
 
-local function quick_setup(props, p)
+function legacy_quick_setup_unused(props, p)
     log("Quick Setup: Starting automated setup...")
 
     local created_count = 0
@@ -2403,6 +2531,7 @@ quick_setup = function(props, p)
         { name = "SP Timer",    text = "25:00",      size = 72 },
         { name = "SP Count",    text = "0/6",        size = 24 },
         { name = "SP Progress", text = "----------", size = 20 },
+        { name = "SP Status",   text = "",           size = 28 },
     }
 
     for i, spec in ipairs(text_specs) do
@@ -2559,6 +2688,7 @@ quick_setup = function(props, p)
         obs.obs_data_set_string(quick_setup_settings, "message_source", "SP Session")
         obs.obs_data_set_string(quick_setup_settings, "focus_count_source", "SP Count")
         obs.obs_data_set_string(quick_setup_settings, "progress_bar_source", "SP Progress")
+        obs.obs_data_set_string(quick_setup_settings, "status_source_name", "SP Status")
         obs.obs_data_set_string(quick_setup_settings, "background_media_source", "SP Background Image")
         obs.obs_data_set_string(quick_setup_settings, "background_music_source_name", "SP Background Music")
         obs.obs_data_set_string(quick_setup_settings, "alert_source_name", "SP Alert Sound")
@@ -2568,6 +2698,7 @@ quick_setup = function(props, p)
         message_source = "SP Session"
         focus_count_source = "SP Count"
         progress_bar_source = "SP Progress"
+        status_state.source_name = "SP Status"
         background_media_source = "SP Background Image"
         background_music_source_name = "SP Background Music"
         alert_source_name = "SP Alert Sound"
@@ -2587,7 +2718,7 @@ quick_setup = function(props, p)
             if src_grp_props then
                 local source_keys = {
                     "time_source", "message_source", "focus_count_source",
-                    "progress_bar_source", "background_media_source",
+                    "progress_bar_source", "status_source_name", "background_media_source",
                     "background_music_source_name", "alert_source_name", "volume_source_name"
                 }
                 for _, key in ipairs(source_keys) do
@@ -2675,6 +2806,8 @@ function script_properties()
     obs.obs_properties_add_button(props, "skip_button", "⏭  Skip Session", on_skip_button_clicked)
     obs.obs_properties_add_button(props, "reset_button", "↺  Reset All", on_reset_button_clicked)
     obs.obs_properties_add_button(props, "add_time_button", "+  Add Time", on_add_time_button_clicked)
+    obs.obs_properties_add_button(props, "show_status_button", "Show Status", on_show_status_button_clicked)
+    obs.obs_properties_add_button(props, "clear_status_button", "Clear Status", on_clear_status_button_clicked)
     obs.obs_properties_add_button(props, "sub_time_button", "−  Subtract Time", on_subtract_time_button_clicked)
 
     if has_pending_resume then
@@ -2714,6 +2847,14 @@ function script_properties()
     obs.obs_properties_add_int(props, "daily_goal_minutes",
         "Daily Focus Goal (dock progress, 0 = disabled)", 0, 720, 15)
 
+    local status_group = obs.obs_properties_create()
+    obs.obs_properties_add_text(status_group, "status_message_input",
+        "Status Message", obs.OBS_TEXT_DEFAULT)
+    obs.obs_properties_add_int(status_group, "status_duration_minutes",
+        "Auto-clear After (min, 0 = manual)", 0, 720, 1)
+    obs.obs_properties_add_group(props, "status_message_group", "Status Message",
+        obs.OBS_GROUP_NORMAL, status_group)
+
     -- ── Text Sources ──
     local src_group = obs.obs_properties_create()
     p = obs.obs_properties_add_list(src_group, "time_source",
@@ -2727,6 +2868,9 @@ function script_properties()
     populate_source_list(p)
     p = obs.obs_properties_add_list(src_group, "progress_bar_source",
         "Progress Bar Source", obs.OBS_COMBO_TYPE_LIST, obs.OBS_COMBO_FORMAT_STRING)
+    populate_source_list(p)
+    p = obs.obs_properties_add_list(src_group, "status_source_name",
+        "Status Text Source", obs.OBS_COMBO_TYPE_LIST, obs.OBS_COMBO_FORMAT_STRING)
     populate_source_list(p)
     p = obs.obs_properties_add_list(src_group, "background_media_source",
         "Background Visual Source", obs.OBS_COMBO_TYPE_LIST, obs.OBS_COMBO_FORMAT_STRING)
@@ -2907,6 +3051,10 @@ function script_defaults(settings)
     obs.obs_data_set_default_string(settings, "transition_to_focus_message", "Back to focus time!")
     obs.obs_data_set_default_string(settings, "transition_to_short_break_message", "Time for a short break!")
     obs.obs_data_set_default_string(settings, "transition_to_long_break_message", "Time for a long break!")
+    obs.obs_data_set_default_string(settings, "status_message_input", "")
+    obs.obs_data_set_default_int(settings, "status_duration_minutes", 0)
+    obs.obs_data_set_default_string(settings, "status_current_message", "")
+    obs.obs_data_set_default_string(settings, "status_source_name", "SP Status")
     obs.obs_data_set_default_string(settings, "background_media_source", "SP Background Image")
     obs.obs_data_set_default_string(settings, "background_music_source_name", "SP Background Music")
 end
@@ -2938,6 +3086,9 @@ local function update_timer_config(settings)
     enable_session_log = obs.obs_data_get_bool(settings, "enable_session_log")
     session_label = obs.obs_data_get_string(settings, "session_label")
     daily_goal_minutes = obs.obs_data_get_int(settings, "daily_goal_minutes")
+    status_state.message_input = obs.obs_data_get_string(settings, "status_message_input")
+    status_state.duration_minutes = obs.obs_data_get_int(settings, "status_duration_minutes")
+    status_state.current_message = obs.obs_data_get_string(settings, "status_current_message")
 
     -- Warning alerts
     enable_warning_alerts = obs.obs_data_get_bool(settings, "enable_warning_alerts")
@@ -2979,6 +3130,7 @@ local function update_source_config(settings)
     message_source = obs.obs_data_get_string(settings, "message_source")
     time_source = obs.obs_data_get_string(settings, "time_source")
     progress_bar_source = obs.obs_data_get_string(settings, "progress_bar_source")
+    status_state.source_name = obs.obs_data_get_string(settings, "status_source_name")
     background_media_source = obs.obs_data_get_string(settings, "background_media_source")
     background_music_source_name = obs.obs_data_get_string(settings, "background_music_source_name")
     alert_source_name = obs.obs_data_get_string(settings, "alert_source_name")

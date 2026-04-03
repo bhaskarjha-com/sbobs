@@ -87,6 +87,7 @@ Common issues and their solutions, organized by category.
 
 - The dock reads from `session_state.json` — same file as the overlay.
 - Make sure the dock URL points to the correct folder using `file:///`.
+- Most reliable setup: pass the state file explicitly, e.g. `timer_dock.html?state_path=file:///D:/tools/SessionPulse/session_state.json`
 - Try closing and re-opening the dock (View → Docks).
 
 ### Daily goal bar doesn't appear
@@ -108,6 +109,13 @@ Common issues and their solutions, organized by category.
 5. **Volume not zero?** — Check the Media Source's volume in OBS's audio mixer.
 
 Quick Setup creates `SP Alert Sound` automatically, so in most cases you only need to assign the audio files.
+
+### How do I show an AFK / BRB / custom status message?
+
+- Use the built-in `SP Status` text source created by Quick Setup.
+- In the script panel, type your message in **Status Message** and click **Show Status**.
+- Set **Duration (minutes)** to `0` to keep it visible until cleared, or a positive number to auto-clear it.
+- Click **Clear Status** when you return.
 
 ### Background image or video doesn't change
 

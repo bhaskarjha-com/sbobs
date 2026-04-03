@@ -233,14 +233,14 @@ const expectedFields = [
   "custom_segment_count", "is_overtime", "overtime_seconds", "next_session_type",
   "next_session_in", "sessions_remaining", "break_suggestion", "stream_duration",
   "chat_status_line", "session_label", "daily_focus_seconds", "daily_goal_seconds",
-  "focus_streak", "session_epoch", "session_pause_total", "session_target_duration",
-  "timestamp"
+  "status_active", "status_message", "status_until_epoch", "focus_streak",
+  "session_epoch", "session_pause_total", "session_target_duration", "timestamp"
 ];
 
-test("Expected 35 fields in state JSON", expectedFields.length === 35);
+test("Expected 38 fields in state JSON", expectedFields.length === 38);
 
-// Verify the README claims "36+ fields" — count includes version
-const docClaim = 36;
+// Verify the README claims "38+ fields" — count includes version
+const docClaim = 38;
 test(`README says "${docClaim}+" which covers ${expectedFields.length} fields`, expectedFields.length >= docClaim - 1);
 
 // ═══════════════════════════════════════════════════════════════════════════════

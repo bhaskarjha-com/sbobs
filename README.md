@@ -23,12 +23,13 @@ SessionPulse turns OBS into a productivity cockpit. Start a focus timer, and it 
 | **Chapter Markers** | Auto-insert recording chapters at transitions |
 | **Session Labels** | Name what you're working on — tracked in CSV |
 | **Daily Focus Goal** | Set a target, track progress in the dock |
+| **Status Messages** | Show AFK/BRB/custom messages with optional auto-clear |
 | **Focus Streak** | Track consecutive completed focus sessions 🔥 |
 | **Overlays** | Circular ring + horizontal bar (themeable) |
 | **Control Dock** | Clickable buttons inside OBS via WebSocket |
 | **Mobile Remote** | Control from your phone over WiFi |
 | **Stats Dashboard** | 7-day chart, streaks, completion rate |
-| **State File API** | 35-field JSON updated every second for integrations |
+| **State File API** | 38-field JSON updated every second for integrations |
 | **Session Logging** | CSV history for analytics |
 | **Persistence** | Survives OBS restarts with atomic state saves and resume-from-saved-point recovery |
 
@@ -45,7 +46,7 @@ SessionPulse turns OBS into a productivity cockpit. Start a focus timer, and it 
 
 Click **🚀 Quick Setup** in the script panel. Done.
 
-This creates the text sources, overlay, placeholder background image/video/music sources, and the alert source, adds them to your current scene, and wires them into the script for a single-scene setup.
+This creates the text sources, `SP Status`, overlay, placeholder background image/video/music sources, and the alert source, adds them to your current scene, and wires them into the script for a single-scene setup.
 
 If OBS closes or crashes mid-session, use **Resume Previous Session** to continue from the exact saved point, including the timer's progress position.
 
@@ -94,7 +95,7 @@ Hit your Start hotkey. Watch the magic.
 ```
 session_pulse.lua          ← Core engine (Lua, runs inside OBS)
                               ↓ writes
-                         session_state.json    ← Public state API (35 fields, updated every second)
+                         session_state.json    ← Public state API (38 fields, updated every second)
                               ↑ reads
 ┌──────────────────┬──────────────────┬────────────────┬──────────────┐
 │ timer_dock.html  │ timer_overlay.html│ timer_stats.html│ timer_remote │
@@ -112,7 +113,7 @@ shared.js                  ← ES module utilities for custom integrations
 `session_state.json` is the integration point — any tool that reads JSON can connect.
 
 <details>
-<summary><strong>All 35 fields</strong> (click to expand)</summary>
+<summary><strong>All 38 fields</strong> (click to expand)</summary>
 
 ```json
 {
@@ -146,6 +147,9 @@ shared.js                  ← ES module utilities for custom integrations
   "session_label": "Math homework",
   "daily_focus_seconds": 7200,
   "daily_goal_seconds": 14400,
+  "status_active": false,
+  "status_message": "",
+  "status_until_epoch": 0,
   "focus_streak": 2,
   "session_epoch": 1711983000,
   "session_pause_total": 0,

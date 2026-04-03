@@ -6,7 +6,7 @@ SessionPulse ships as a flat directory — OBS Browser Sources use `file://` pro
 | File | Purpose |
 |------|---------|
 | `session_pulse.lua` | Core engine — all timer logic, OBS automation, state management |
-| `session_state.json` | Runtime state file (35 fields, written every second, gitignored) |
+| `session_state.json` | Runtime state file (38 fields, written every second, gitignored) |
 | `session_history.csv` | Session log (appended on completion, gitignored) |
 | `timer_dock.html` | WebSocket control dock (Start/Pause/Skip/Stop + stats) |
 | `timer_overlay.html` | Circular ring overlay (themeable, poll-based) |
@@ -69,7 +69,7 @@ The script is divided into exactly 23 sections, labeled with standard `---` comm
 18. **Hotkey Callbacks**: Thin integration layer to the Controls.
 19. **Frontend Events**: Hooks for stream/recording toggles.
 20. **Source/Scene Enumeration**: OBS SDK dropdown population logic.
-21. **Quick Setup Wizard**: Automated source-and-overlay generator that places the text sources, overlay, background image/video/music sources, and alert source into the active scene.
+21. **Quick Setup Wizard**: Automated source-and-overlay generator that places the text sources, `SP Status`, overlay, background image/video/music sources, and alert source into the active scene.
 22. **OBS Script Interface**: Standard OBS `script_properties` and `script_update`.
 23. **Lifecycle**: OBS `script_load`, `script_save`, `script_unload`.
 

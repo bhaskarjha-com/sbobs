@@ -258,6 +258,9 @@ local function build_state_json()
         '  "stream_duration": %d,\n' ..
         '  "chat_status_line": "%s",\n' ..
         '  "session_label": "%s",\n' ..
+        '  "status_active": %s,\n' ..
+        '  "status_message": "%s",\n' ..
+        '  "status_until_epoch": %d,\n' ..
         '  "daily_focus_seconds": %d,\n' ..
         '  "daily_goal_seconds": %d,\n' ..
         '  "focus_streak": %d,\n' ..
@@ -278,6 +281,9 @@ local function build_state_json()
         "Stretch!", 7200,
         json_escape("Focus 20:34 (2/6)"),
         json_escape("Math homework"),
+        "true",
+        json_escape("BRB"),
+        os.time() + 300,
         7200, 14400, 2,
         os.time(), 0, 1500,
         os.time()
@@ -291,11 +297,13 @@ test("JSON contains focus_streak", json_out:find('"focus_streak": 2') ~= nil)
 test("JSON contains daily_focus_seconds", json_out:find('"daily_focus_seconds": 7200') ~= nil)
 test("JSON contains daily_goal_seconds", json_out:find('"daily_goal_seconds": 14400') ~= nil)
 test("JSON contains session_label", json_out:find('"session_label": "Math homework"') ~= nil)
+test("JSON contains status_active", json_out:find('"status_active": true') ~= nil)
+test("JSON contains status_message", json_out:find('"status_message": "BRB"') ~= nil)
 test("JSON contains show_transition", json_out:find('"show_transition": false') ~= nil)
 -- Count fields by counting ":" that follow quoted keys
 local field_count = 0
 for _ in json_out:gmatch('"[%w_]+":') do field_count = field_count + 1 end
-test("JSON has 35 fields", field_count == 35)
+test("JSON has 38 fields", field_count == 38)
 
 -- ═══════════════════════════════════════════════════════
 -- Test 10: Focus Streak Logic

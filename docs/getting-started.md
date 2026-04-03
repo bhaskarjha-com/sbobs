@@ -51,7 +51,7 @@ Click **one button** and SessionPulse creates everything for you:
 2. Done.
 
 This automatically:
-- ✅ Creates 4 text sources (`SP Timer`, `SP Session`, `SP Count`, `SP Progress`)
+- ✅ Creates 5 text sources (`SP Timer`, `SP Session`, `SP Count`, `SP Progress`, `SP Status`)
 - ✅ Creates a ring overlay Browser Source (`SP Overlay`)
 - ✅ Creates placeholder background sources (`SP Background Image`, `SP Background Video`, `SP Background Music`)
 - ✅ Creates an alert Media Source (`SP Alert Sound`)
@@ -60,7 +60,7 @@ This automatically:
 
 Check the Script Log to confirm:
 ```
-[SessionPulse] Quick Setup: ✓ Complete! Created 9 items. Press Start to begin!
+[SessionPulse] Quick Setup: ✓ Complete! Created 10 items. Press Start to begin!
 ```
 
 > **Skip to [Step 4: Set Up Hotkeys](#step-4-set-up-hotkeys)** — sources, scenes, and overlay are ready.
@@ -170,14 +170,15 @@ The dock gives you clickable buttons inside OBS instead of using hotkeys:
 2. Fill in:
    - **Dock Name:** `SessionPulse`
    - **URL:** `file:///` + full path to `timer_dock.html`
+   - Recommended: also add `?state_path=file:///FULL/PATH/session_state.json`
    
    Examples:
-   - Windows: `file:///D:/tools/SessionPulse/timer_dock.html`
-   - Mac: `file:///Users/you/SessionPulse/timer_dock.html`
+   - Windows: `file:///D:/tools/SessionPulse/timer_dock.html?state_path=file:///D:/tools/SessionPulse/session_state.json`
+   - Mac: `file:///Users/you/SessionPulse/timer_dock.html?state_path=file:///Users/you/SessionPulse/session_state.json`
    
 3. Click **Apply**
 
-A new dock panel appears with Start/Pause, Skip, Stop buttons, a timer display, and session stats.
+A new dock panel appears with Start/Pause, Skip, Stop buttons, a timer display, session stats, and the live `SP Status` / AFK message when one is active.
 
 **For control buttons to work**, you need WebSocket enabled:
 1. Go to **Tools** → **WebSocket Server Settings**

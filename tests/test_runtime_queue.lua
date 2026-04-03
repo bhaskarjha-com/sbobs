@@ -333,6 +333,7 @@ local base_settings = {
     message_source = "MessageText",
     time_source = "TimeText",
     progress_bar_source = "BarText",
+    status_source_name = "StatusText",
     background_media_source = "",
     background_music_source_name = "",
     alert_source_name = "",
@@ -355,7 +356,10 @@ local base_settings = {
     focus_background_video = "",
     short_break_background_video = "",
     long_break_background_video = "",
-    background_music_track_path = ""
+    background_music_track_path = "",
+    status_message_input = "",
+    status_duration_minutes = 0,
+    status_current_message = ""
 }
 
 local real_os_clock = os.clock
@@ -539,18 +543,69 @@ end
 
 section("Quick Setup Placement")
 do
-    local mock_obs, hooks = load_runtime(base_settings)
+    local settings = {}
+    for k, v in pairs(base_settings) do settings[k] = v end
+
+    local mock_obs, hooks = load_runtime(settings)
 
     test("quick setup returns true", hooks.quick_setup(nil, nil) == true)
     test("quick setup places timer in current scene", mock_obs.current_scene.items["SP Timer"] ~= nil)
     test("quick setup places session label in current scene", mock_obs.current_scene.items["SP Session"] ~= nil)
     test("quick setup places count in current scene", mock_obs.current_scene.items["SP Count"] ~= nil)
     test("quick setup places progress in current scene", mock_obs.current_scene.items["SP Progress"] ~= nil)
+    test("quick setup places status in current scene", mock_obs.current_scene.items["SP Status"] ~= nil)
     test("quick setup places overlay in current scene", mock_obs.current_scene.items["SP Overlay"] ~= nil)
     test("quick setup places background image in current scene", mock_obs.current_scene.items["SP Background Image"] ~= nil)
     test("quick setup places background video in current scene", mock_obs.current_scene.items["SP Background Video"] ~= nil)
     test("quick setup places background music in current scene", mock_obs.current_scene.items["SP Background Music"] ~= nil)
     test("quick setup places alert sound in current scene", mock_obs.current_scene.items["SP Alert Sound"] ~= nil)
+end
+
+section("Status Message")
+do
+    local settings = {}
+    for k, v in pairs(base_settings) do settings[k] = v end
+    settings.status_message_input = "BRB in 5"
+    settings.status_duration_minutes = 0
+
+    local mock_obs, hooks = load_runtime(settings)
+    test("show status queues work", hooks.on_show_status_button_clicked(nil, nil) == true and hooks.get_pending_control_count() == 1)
+    script_tick(0.016)
+
+    local status_source = mock_obs.sources[settings.status_source_name]
+    local runtime = hooks.get_runtime_state()
+    test("status activates when shown", runtime.status_active == true)
+    test("status stores message", runtime.status_current_message == "BRB in 5")
+    test("status updates source text", status_source and status_source.settings and status_source.settings.text == "BRB in 5")
+    test("status source is enabled", status_source and status_source.enabled == true)
+
+    test("clear status queues work", hooks.on_clear_status_button_clicked(nil, nil) == true and hooks.get_pending_control_count() == 1)
+    script_tick(0.016)
+    runtime = hooks.get_runtime_state()
+    status_source = mock_obs.sources[settings.status_source_name]
+    test("status clears when requested", runtime.status_active == false and runtime.status_current_message == "")
+    test("status source is disabled after clear", status_source and status_source.enabled == false)
+end
+
+section("Status Expiry")
+do
+    local settings = {}
+    for k, v in pairs(base_settings) do settings[k] = v end
+    settings.status_message_input = "AFK"
+    settings.status_duration_minutes = 1
+
+    fake_now = 1000
+    local mock_obs, hooks = load_runtime(settings)
+    hooks.on_show_status_button_clicked(nil, nil)
+    script_tick(0.016)
+
+    fake_now = 1061
+    hooks.timer_tick()
+
+    local status_source = mock_obs.sources[settings.status_source_name]
+    local runtime = hooks.get_runtime_state()
+    test("timed status expires automatically", runtime.status_active == false)
+    test("timed status disables source on expiry", status_source and status_source.enabled == false)
 end
 
 section("Background Visual Routing")

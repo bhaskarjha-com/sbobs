@@ -94,6 +94,26 @@
   .ws-dot.connected { background: var(--ws-connected); }
   .ws-dot.connecting { background: var(--ws-connecting); animation: blink 1s infinite; }
 
+  .state-indicator {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 0.45rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+    padding: 1px 4px;
+    border-radius: 4px;
+  }
+  .state-dot {
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: var(--ws-disconnected);
+    transition: background 0.3s;
+  }
+  .state-dot.connected { background: var(--ws-connected); }
+  .state-dot.connecting { background: var(--ws-connecting); animation: blink 1s infinite; }
+
   .status-dot {
     width: 6px;
     height: 6px;
@@ -321,6 +341,10 @@
   <span class="header-title">SessionPulse</span>
   <div class="header-badges">
     <span class="mode-badge" id="modeBadge">pomodoro</span>
+    <div class="state-indicator" id="stateIndicator" title="Dock state file connection">
+      <div class="state-dot connecting" id="stateDot"></div>
+      <span id="stateLabel">DATA</span>
+    </div>
     <div class="ws-indicator" id="wsIndicator" title="Click to reconnect">
       <div class="ws-dot" id="wsDot"></div>
       <span id="wsLabel">WS</span>
@@ -399,6 +423,11 @@
   <span class="value" id="sessionLabel">--</span>
 </div>
 
+<div class="chat-copy" id="statusRow" style="display:none" title="Manual status / AFK message">
+  <span class="label">Status</span>
+  <span class="value" id="statusMessage">--</span>
+</div>
+
 <div id="dailyGoalRow" style="display:none; padding:6px 16px;">
   <div style="display:flex; justify-content:space-between; font-size:11px; color:#94a3b8; margin-bottom:4px;">
     <span id="dailyGoalText">Daily Goal</span>
@@ -425,9 +454,22 @@ const params = new URLSearchParams(window.location.search);
 const wsPort = params.get('ws_port') || localStorage.getItem('obs_ws_port') || '4455';
 const wsPassword = params.get('ws_password') || localStorage.getItem('obs_ws_password') || '';
 
+function normalizePathInput(raw) {
+  if (!raw) return '';
+  if (/^[a-zA-Z]:[\\/]/.test(raw)) {
+    return 'file:///' + raw.replace(/\\/g, '/');
+  }
+  return raw;
+}
+
+const statePathOverride = normalizePathInput(
+  params.get('state_path') || localStorage.getItem('sessionpulse_state_path') || ''
+);
+
 // Persist config
 if (params.get('ws_port')) localStorage.setItem('obs_ws_port', wsPort);
 if (params.get('ws_password')) localStorage.setItem('obs_ws_password', wsPassword);
+if (params.get('state_path')) localStorage.setItem('sessionpulse_state_path', statePathOverride);
 
 // ── DOM Elements ──
 const timeEl = document.getElementById('time');
@@ -445,6 +487,8 @@ const elapsedEl = document.getElementById('elapsed');
 const streamTimeEl = document.getElementById('streamTime');
 const chatStatusEl = document.getElementById('chatStatus');
 const chatCopyEl = document.getElementById('chatCopy');
+const stateDot = document.getElementById('stateDot');
+const stateLabel = document.getElementById('stateLabel');
 const wsDot = document.getElementById('wsDot');
 const wsLabel = document.getElementById('wsLabel');
 const wsIndicator = document.getElementById('wsIndicator');
@@ -455,72 +499,17 @@ const btnSkip = document.getElementById('btnSkip');
 const btnAddTime = document.getElementById('btnAddTime');
 const btnSubTime = document.getElementById('btnSubTime');
 const btnReset = document.getElementById('btnReset');
+const footerText = document.getElementById('footerText');
 
 const BADGE_CLASSES = {
   'Focus': 'focus', 'Short Break': 'short-break', 'Long Break': 'long-break',
 };
 
 // ── OBS WebSocket ──
-const obs = { on() {}, async connect() {}, async call() {} };
 let wsConnected = false;
 let controlActionInFlight = false;
 let wsProbeTimer = null;
-
-function setWsStatus(status) {
-  wsDot.className = 'ws-dot ' + status;
-  wsLabel.textContent = status === 'connected' ? 'WS ✓' : status === 'connecting' ? 'WS…' : 'WS ✗';
-  wsConnected = (status === 'connected');
-  // Buttons work regardless — they just trigger hotkeys via WS
-  [btnStartPause, btnStop, btnSkip, btnAddTime, btnSubTime, btnReset].forEach(b => {
-    b.disabled = !wsConnected;
-  });
-}
-
-async function connectWebSocket() {
-  if (wsConnected) return;
-  setWsStatus('connecting');
-  try {
-    await obs.connect(`ws://127.0.0.1:${wsPort}`, wsPassword || undefined);
-    setWsStatus('connected');
-    console.log('[Dock] WebSocket connected');
-  } catch (e) {
-    console.warn('[Dock] WebSocket failed:', e.message);
-    setWsStatus('disconnected');
-    scheduleReconnect();
-  }
-}
-
-obs.on('ConnectionClosed', () => {
-  setWsStatus('disconnected');
-  console.log('[Dock] WebSocket disconnected');
-  scheduleReconnect();
-});
-
-function scheduleReconnect() {
-  if (wsReconnectTimer) clearTimeout(wsReconnectTimer);
-  wsReconnectTimer = setTimeout(connectWebSocket, WS_RECONNECT_DELAY);
-}
-
-wsIndicator.addEventListener('click', () => {
-  if (!wsConnected) connectWebSocket();
-});
-
-// ── Hotkey Triggers via WebSocket ──
-async function triggerHotkey(hotkeyName) {
-  if (!wsConnected) return;
-  try {
-    await obs.call('TriggerHotkeyByName', { hotkeyName });
-  } catch (e) {
-    console.warn('[Dock] Hotkey trigger failed:', hotkeyName, e.message);
-  }
-}
-
-btnStartPause.addEventListener('click', () => triggerHotkey('session_pulse_start_pause'));
-btnStop.addEventListener('click', () => triggerHotkey('session_pulse_stop'));
-btnSkip.addEventListener('click', () => triggerHotkey('session_pulse_skip'));
-btnAddTime.addEventListener('click', () => triggerHotkey('session_pulse_add_time'));
-btnSubTime.addEventListener('click', () => triggerHotkey('session_pulse_sub_time'));
-btnReset.addEventListener('click', () => triggerHotkey('session_pulse_reset'));
+let stateConnected = false;
 
 function setControlButtonsBusy(busy) {
   controlActionInFlight = busy;
@@ -547,6 +536,124 @@ function scheduleWsProbe() {
     await connectWebSocket();
     scheduleWsProbe();
   }, WS_PROBE_INTERVAL);
+}
+
+const stateUrlCandidates = (() => {
+  const urls = [];
+
+  function push(url) {
+    if (!url) return;
+    urls.push(url);
+  }
+
+  function pushSiblingStateUrl(raw) {
+    if (!raw) return;
+    const text = String(raw);
+
+    if (/timer_dock\.html/i.test(text)) {
+      push(text.replace(/timer_dock\.html(?:\?[^#]*)?(?:#.*)?/i, 'session_state.json'));
+    }
+
+    const embeddedFileUrls = text.match(/file:\/\/\/[^"'<> \t\r\n]+/ig) || [];
+    for (const fileUrl of embeddedFileUrls) {
+      push(fileUrl.replace(/timer_dock\.html(?:\?[^#]*)?(?:#.*)?/i, 'session_state.json'));
+    }
+  }
+
+  push(statePathOverride);
+  pushSiblingStateUrl(window.location.href);
+  pushSiblingStateUrl(document.URL);
+  pushSiblingStateUrl(window.location.search);
+  pushSiblingStateUrl(window.location.hash);
+
+  try {
+    push(new URL('session_state.json', window.location.href).href);
+  } catch (error) {
+    // Ignore invalid dock URL bases.
+  }
+
+  try {
+    push(new URL('session_state.json', document.baseURI).href);
+  } catch (error) {
+    // Ignore invalid base URIs.
+  }
+
+  push('session_state.json');
+  return [...new Set(urls.filter(Boolean))];
+})();
+
+let preferredStateUrl = stateUrlCandidates[0] || 'session_state.json';
+
+function withCacheBust(url) {
+  return url + (url.includes('?') ? '&' : '?') + 't=' + Date.now();
+}
+
+function fetchJsonViaXhr(url) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('GET', withCacheBust(url), true);
+    xhr.onreadystatechange = () => {
+      if (xhr.readyState !== 4) return;
+      if (xhr.status === 200 || (xhr.status === 0 && xhr.responseText)) {
+        try {
+          resolve(JSON.parse(xhr.responseText));
+        } catch (error) {
+          reject(error);
+        }
+      } else {
+        reject(new Error(`XHR failed for ${url}: ${xhr.status}`));
+      }
+    };
+    xhr.onerror = () => reject(new Error(`XHR error for ${url}`));
+    xhr.send();
+  });
+}
+
+async function fetchStateCandidate(url) {
+  try {
+    const resp = await fetch(withCacheBust(url), { cache: 'no-store' });
+    if (!resp.ok) throw new Error(`Fetch failed for ${url}: ${resp.status}`);
+    return await resp.json();
+  } catch (error) {
+    const isLocal = String(url).startsWith('file:') || window.location.protocol === 'file:';
+    if (!isLocal) throw error;
+    return fetchJsonViaXhr(url);
+  }
+}
+
+function setStateStatus(status, detail) {
+  stateDot.className = 'state-dot ' + status;
+  stateLabel.textContent = status === 'connected' ? 'DATA OK' : status === 'connecting' ? 'DATA...' : 'DATA X';
+  stateConnected = (status === 'connected');
+
+  if (detail) {
+    footerText.textContent = detail;
+  } else if (stateConnected && wsConnected) {
+    footerText.textContent = 'Live state + dock controls connected';
+  } else if (stateConnected) {
+    footerText.textContent = 'Read-only mode: state file connected';
+  } else {
+    footerText.textContent = 'v5.4.1 · Hotkeys or buttons to control';
+  }
+}
+
+async function loadStateJson() {
+  const candidates = preferredStateUrl
+    ? [preferredStateUrl, ...stateUrlCandidates.filter(url => url !== preferredStateUrl)]
+    : stateUrlCandidates;
+
+  let lastError = null;
+  for (const url of candidates) {
+    try {
+      const data = await fetchStateCandidate(url);
+      preferredStateUrl = url;
+      return data;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw lastError || new Error('No session state source available');
 }
 
 function nextRequestId() {
@@ -701,9 +808,99 @@ async function callObs(requestType, requestData) {
       const comment = response.d && response.d.requestStatus && response.d.requestStatus.comment;
       throw new Error(comment || `OBS request failed: ${requestType}`);
     }
+
+    return (response.d && response.d.responseData) || {};
   } finally {
     await closeObsSocket(socket);
   }
+}
+
+async function getObsInputText(inputName) {
+  const responseData = await callObs('GetInputSettings', { inputName });
+  if (!responseData || !responseData.inputSettings) return '';
+  return responseData.inputSettings.text || '';
+}
+
+function parseTimerText(timerText) {
+  if (!timerText || timerText === '--:--') return null;
+  const clean = String(timerText).trim().replace(/^\+/, '');
+  const parts = clean.split(':').map(part => parseInt(part, 10));
+  if (parts.some(Number.isNaN)) return null;
+  if (parts.length === 2) return (parts[0] * 60) + parts[1];
+  if (parts.length === 3) return (parts[0] * 3600) + (parts[1] * 60) + parts[2];
+  return null;
+}
+
+function inferSessionType(messageText) {
+  const text = String(messageText || '').toLowerCase();
+  if (text.includes('short break')) return 'Short Break';
+  if (text.includes('long break')) return 'Long Break';
+  if (text.includes('focus')) return 'Focus';
+  if (text.includes('countdown')) return 'Countdown';
+  if (text.includes('stopwatch')) return 'Stopwatch';
+  return '';
+}
+
+function parseCountText(countText) {
+  const match = String(countText || '').match(/(\d+)\s*\/\s*(\d+)/);
+  if (!match) return { completed: 0, goal: 0 };
+  return {
+    completed: parseInt(match[1], 10) || 0,
+    goal: parseInt(match[2], 10) || 0
+  };
+}
+
+function parseProgressText(progressText) {
+  const filled = (String(progressText || '').match(/█/g) || []).length;
+  const empty = (String(progressText || '').match(/░/g) || []).length;
+  const total = filled + empty;
+  if (total <= 0) return 0;
+  return Math.round((filled / total) * 100);
+}
+
+async function loadStateViaObsSources() {
+  const [timerText, sessionText, countText, progressText, statusText] = await Promise.all([
+    getObsInputText('SP Timer').catch(() => ''),
+    getObsInputText('SP Session').catch(() => ''),
+    getObsInputText('SP Count').catch(() => ''),
+    getObsInputText('SP Progress').catch(() => ''),
+    getObsInputText('SP Status').catch(() => '')
+  ]);
+
+  const currentTime = parseTimerText(timerText);
+  const sessionType = inferSessionType(sessionText);
+  const counts = parseCountText(countText);
+  const progressPercent = parseProgressText(progressText);
+  const paused = /\bpaused\b/i.test(sessionText);
+  const statusMessage = String(statusText || '').trim();
+  const isRunning = currentTime != null && !!sessionText && !/\bready\b/i.test(sessionText);
+
+  if (!isRunning && !statusMessage && counts.goal === 0 && !sessionType) {
+    throw new Error('SessionPulse OBS sources did not provide usable dock data');
+  }
+
+  const totalTime = (currentTime != null && progressPercent > 0 && progressPercent < 100)
+    ? Math.round(currentTime / (1 - (progressPercent / 100)))
+    : 0;
+
+  return {
+    is_running: isRunning,
+    is_paused: paused,
+    session_type: sessionType || (isRunning ? 'Focus' : 'Ready'),
+    current_time: currentTime != null ? currentTime : 0,
+    total_time: totalTime,
+    elapsed_seconds: totalTime > 0 ? Math.max(0, totalTime - currentTime) : 0,
+    progress_percent: progressPercent,
+    completed_focus_sessions: counts.completed,
+    goal_sessions: counts.goal,
+    total_focus_seconds: 0,
+    cycle_count: 0,
+    stream_duration: 0,
+    timer_mode: sessionType === 'Countdown' ? 'countdown' : sessionType === 'Stopwatch' ? 'stopwatch' : 'pomodoro',
+    chat_status_line: statusMessage || sessionText || '--',
+    status_active: statusMessage !== '',
+    status_message: statusMessage
+  };
 }
 
 async function connectWebSocket() {
@@ -732,6 +929,17 @@ async function triggerHotkey(hotkeyName) {
     setControlButtonsBusy(false);
   }
 }
+
+wsIndicator.addEventListener('click', () => {
+  if (!wsConnected) connectWebSocket();
+});
+
+btnStartPause.addEventListener('click', () => triggerHotkey('session_pulse_start_pause'));
+btnStop.addEventListener('click', () => triggerHotkey('session_pulse_stop'));
+btnSkip.addEventListener('click', () => triggerHotkey('session_pulse_skip'));
+btnAddTime.addEventListener('click', () => triggerHotkey('session_pulse_add_time'));
+btnSubTime.addEventListener('click', () => triggerHotkey('session_pulse_sub_time'));
+btnReset.addEventListener('click', () => triggerHotkey('session_pulse_reset'));
 
 // ── Chat Copy ──
 chatCopyEl.addEventListener('click', () => {
@@ -787,6 +995,7 @@ function update(state) {
     streamTimeEl.textContent = '--';
     modeBadge.textContent = '--';
     chatStatusEl.textContent = '--';
+    document.getElementById('statusRow').style.display = 'none';
     btnStartPauseLabel.textContent = 'Start';
     btnStartPause.querySelector('.icon').textContent = '▶';
     return;
@@ -939,6 +1148,15 @@ function update(state) {
     labelRow.style.display = 'none';
   }
 
+  const statusRow = document.getElementById('statusRow');
+  const statusMessageEl = document.getElementById('statusMessage');
+  if (state.status_active && state.status_message && state.status_message.trim()) {
+    statusRow.style.display = '';
+    statusMessageEl.textContent = state.status_message;
+  } else {
+    statusRow.style.display = 'none';
+  }
+
   // Daily goal
   const goalRow = document.getElementById('dailyGoalRow');
   const goalFill = document.getElementById('dailyGoalFill');
@@ -973,27 +1191,25 @@ async function poll() {
   if (pollStopped || pollInFlight) return;
   pollInFlight = true;
   try {
-    const resp = await fetch('session_state.json?t=' + Date.now(), { cache: 'no-store' });
-    if (resp.ok) {
+    consecutiveFetchFailures = 0;
+    lastState = await loadStateJson();
+    setStateStatus('connected', wsConnected ? 'Live state + dock controls connected' : `Read-only mode · ${preferredStateUrl}`);
+    update(lastState);
+  } catch (e) {
+    try {
+      lastState = await loadStateViaObsSources();
       consecutiveFetchFailures = 0;
-      lastState = await resp.json();
+      setStateStatus('connected', 'State file unavailable · using OBS source fallback');
       update(lastState);
-    } else {
+    } catch (fallbackError) {
       consecutiveFetchFailures += 1;
+      setStateStatus('disconnected', `State file unavailable · ${preferredStateUrl || 'session_state.json'}`);
       if (consecutiveFetchFailures >= 2) {
         lastState = null;
         update(null);
       } else {
         update(lastState);
       }
-    }
-  } catch (e) {
-    consecutiveFetchFailures += 1;
-    if (consecutiveFetchFailures >= 2) {
-      lastState = null;
-      update(null);
-    } else {
-      update(lastState);
     }
   } finally {
     pollInFlight = false;
@@ -1003,6 +1219,7 @@ async function poll() {
   }
 }
 
+setStateStatus('connecting', 'Connecting to session_state.json...');
 poll();
 window.addEventListener('beforeunload', () => {
   pollStopped = true;

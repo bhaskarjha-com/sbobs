@@ -1,4 +1,4 @@
-# Automation Guide
+﻿# Automation Guide
 
 SessionPulse can automate nearly every aspect of your OBS setup based on your session state. This guide covers each automation feature with step-by-step setup.
 
@@ -264,6 +264,27 @@ Short Break (5 min)
 ├── 4:30  — ⏰ Break ending warning (30s before)
 └── 5:00  — 🔔 Focus start sound
 ```
+
+---
+
+## Status / AFK Messages
+
+Show a manual `BRB`, `AFK`, or custom note on stream without stopping the timer.
+
+### Setup
+
+1. Use Quick Setup so it creates `SP Status` and places it in your active scene
+2. In the script panel:
+   - Type your message into **Status Message**
+   - Set **Duration (minutes)** to `0` to keep it visible until cleared, or a positive number to auto-clear it
+   - Click **Show Status**
+3. Click **Clear Status** when you want to remove it
+
+### Behavior
+
+- The message is written into the `SP Status` text source
+- The timer keeps running normally underneath it
+- Active status state is exposed in `session_state.json`, so the dock can surface it too
 
 ---
 
