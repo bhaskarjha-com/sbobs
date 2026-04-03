@@ -13,7 +13,6 @@ flowchart LR
     Check -->|Yes| Actions
     
     subgraph Actions["Automation Actions"]
-        Scene["Switch Scene"]
         Volume["Duck Volume"]
         Mic["Toggle Mic"]
         Filter["Toggle Filters"]
@@ -49,7 +48,7 @@ Smoothly fade music volume between focus and break levels.
 1. You need a **media source** in OBS that plays music (e.g., `Background Music`)
 2. In script settings, find the **Volume Ducking** section
 3. Set:
-   - **Music/Audio Source** → select your music source
+   - **Ducking Target Source** → select your music source (usually `SP Background Music`)
    - **Focus Volume %** → `30` (quiet during focus)
    - **Break Volume %** → `80` (louder during breaks)
    - **Smooth Volume Fade** → ✅ enabled
@@ -160,19 +159,47 @@ Hide chat, donation alerts, and other distractions during focused work sessions.
 
 ---
 
-## Background Media
+## Background Visuals
 
 Swap background images or videos per session type.
 
 ### Setup
 
-1. Add an **Image** or **Media Source** to your scene for the background
+1. Add an **Image Source** or **Media Source** to your scene for the background.
+   Quick Setup already creates both `SP Background Image` and `SP Background Video`.
 2. In script settings, set:
-   - **Background Media Source** → select it
-   - **Focus Background** → file path to focus image/video
-   - **Break Background** → file path to break image/video
+   - **Background Visual Source** → choose the image source or the video source
+   - If you chose an image source:
+     - **Focus Image**
+     - **Short Break Image**
+     - **Long Break Image**
+   - If you chose a video source:
+     - **Focus Video**
+     - **Short Break Video**
+     - **Long Break Video**
 
 The source's file will be swapped at each transition.
+
+---
+
+## Background Music
+
+Run a looping music bed separately from your background visuals and alert sounds.
+
+### Setup
+
+1. Add a **Media Source** to your scene for music.
+   Quick Setup already creates a placeholder named `SP Background Music` for this.
+2. In script settings:
+   - **Background Music Source** → select the media source
+   - **Looping Music Track** → choose the audio file to loop
+   - **Ducking Target Source** → point to the same music source if you want Focus/Break volume automation
+
+### Behavior
+
+- Music starts when the timer starts
+- Music stops when the timer stops
+- Volume ducking changes its level between Focus and Break if selected as the ducking target
 
 ---
 
@@ -212,7 +239,8 @@ Play sounds before session transitions so you're not caught off-guard.
 
 ### Setup
 
-1. Add a **Media Source** to your scene for alert sounds
+1. Add a **Media Source** to your scene for alert sounds.
+   Quick Setup already creates a placeholder named `SP Alert Sound` for this.
 2. In script settings:
    - **Alert Sound Source** → select the media source
    - Set your audio files:
@@ -286,8 +314,7 @@ Name:Minutes,Name:Minutes,Name:Minutes
 
 - Segments cycle in order, then loop back to the first
 - Each segment name appears as the session message
-- All other automation (scenes, volume, etc.) treats non-"Break" names as focus time
-- Scene switching uses the Focus scene for all non-break segments
+- All other automation (volume, visibility, filters, overlays) treats non-"Break" names as focus time
 
 ### Setup
 

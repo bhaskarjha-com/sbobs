@@ -161,6 +161,7 @@ local message_source = ""
 local time_source = ""
 local progress_bar_source = ""
 local background_media_source = ""
+local background_music_source_name = ""
 local alert_source_name = ""
 
 -- Session messages
@@ -173,12 +174,27 @@ local transition_to_focus_message = "Back to focus time!"
 local transition_to_long_break_message = "Time for a long break!"
 
 -- Asset paths
-local focus_background_media = ""
-local short_break_background_media = ""
-local long_break_background_media = ""
-local focus_alert_sound_path = ""
-local short_break_alert_sound_path = ""
-local long_break_alert_sound_path = ""
+local legacy_background_media_paths = {
+    Focus = "",
+    ["Short Break"] = "",
+    ["Long Break"] = ""
+}
+local background_image_paths = {
+    Focus = "",
+    ["Short Break"] = "",
+    ["Long Break"] = ""
+}
+local background_video_paths = {
+    Focus = "",
+    ["Short Break"] = "",
+    ["Long Break"] = ""
+}
+local background_music_track_path = ""
+local alert_sound_paths = {
+    Focus = "",
+    ["Short Break"] = "",
+    ["Long Break"] = ""
+}
 
 ------------------------------------------------------------------------
 -- 3. Hotkey IDs
@@ -699,6 +715,7 @@ end
 -- Forward declarations (referenced by apply_saved_state before definition)
 local update_display_texts
 local update_background_media
+local update_background_music
 local update_mic_state
 local update_source_visibility
 local update_volume
@@ -730,13 +747,18 @@ local function apply_saved_state(state)
             session_pause_total = 0
             session_target_duration = 0
         else
-            session_epoch = os.time()
+            local saved_total = state.session_target_duration or get_duration_for_session(session_type)
+            local saved_remaining = state.current_time or saved_total
+            local saved_elapsed = math.max(0, saved_total - saved_remaining)
+
+            session_epoch = os.time() - saved_elapsed
             session_pause_total = 0
-            session_target_duration = state.current_time or state.session_target_duration or get_duration_for_session(session_type)
+            session_target_duration = saved_total
         end
 
         if is_paused then
             pause_epoch = os.time()
+            current_time = state.current_time or current_time
         else
             pause_epoch = 0
             current_time = compute_current_time()
@@ -761,6 +783,7 @@ local function apply_saved_state(state)
     has_pending_resume = false
     update_display_texts()
     update_background_media()
+    update_background_music(true)
     update_mic_state()
     update_source_visibility()
     update_volume()
@@ -788,15 +811,65 @@ local function update_obs_source_text(source_name, text)
     end
 end
 
+local function set_source_enabled_by_name(source_name, enabled)
+    if not source_name or source_name == "" then return false end
+    local source = obs.obs_get_source_by_name(source_name)
+    if not source then return false end
+    obs.obs_source_set_enabled(source, enabled)
+    obs.obs_source_release(source)
+    return true
+end
+
+local function get_background_source_mode(source_name)
+    if not source_name or source_name == "" then return "unknown" end
+    local source = obs.obs_get_source_by_name(source_name)
+    if not source then return "unknown" end
+
+    local source_id = obs.obs_source_get_id(source)
+    obs.obs_source_release(source)
+
+    if source_id == "image_source" then
+        return "image"
+    end
+    if source_id == "ffmpeg_source" then
+        return "video"
+    end
+    return "unknown"
+end
+
+local function get_background_asset_path(stype)
+    local source_mode = get_background_source_mode(background_media_source)
+
+    if source_mode == "image" then
+        local image_path = background_image_paths[stype]
+        if image_path and image_path ~= "" then
+            return image_path, "image"
+        end
+    elseif source_mode == "video" then
+        local video_path = background_video_paths[stype]
+        if video_path and video_path ~= "" then
+            return video_path, "video"
+        end
+    end
+
+    local legacy_path = legacy_background_media_paths[stype]
+    return legacy_path, source_mode
+end
+
+local function sync_background_visual_sources()
+    local use_image = (background_media_source == "SP Background Image")
+    local use_video = (background_media_source == "SP Background Video")
+
+    set_source_enabled_by_name("SP Background Image", use_image)
+    set_source_enabled_by_name("SP Background Video", use_video)
+end
+
 update_background_media = function()
     if not background_media_source or background_media_source == "" then return end
 
-    local media_map = {
-        Focus = focus_background_media,
-        ["Short Break"] = short_break_background_media,
-        ["Long Break"] = long_break_background_media
-    }
-    local media_path = media_map[session_type]
+    sync_background_visual_sources()
+
+    local media_path, source_mode = get_background_asset_path(session_type)
 
     local source = obs.obs_get_source_by_name(background_media_source)
     if source then
@@ -817,18 +890,44 @@ update_background_media = function()
             end
 
             obs.obs_data_release(settings)
+            if source_mode == "image" then
+                log("Background image updated for " .. session_type)
+            elseif source_mode == "video" then
+                log("Background video updated for " .. session_type)
+            end
         end
         obs.obs_source_release(source)
     end
 end
 
+update_background_music = function(force_restart)
+    if not background_music_source_name or background_music_source_name == "" then return end
+
+    local source = obs.obs_get_source_by_name(background_music_source_name)
+    if not source then return end
+
+    local should_enable = is_running
+    obs.obs_source_set_enabled(source, should_enable)
+
+    if obs.obs_source_get_id(source) == "ffmpeg_source" and background_music_track_path and background_music_track_path ~= "" then
+        local settings = obs.obs_data_create()
+        obs.obs_data_set_string(settings, "local_file", background_music_track_path)
+        obs.obs_data_set_bool(settings, "is_local_file", true)
+        obs.obs_data_set_bool(settings, "looping", true)
+        obs.obs_data_set_bool(settings, "restart_on_activate", true)
+        obs.obs_source_update(source, settings)
+        obs.obs_data_release(settings)
+
+        if should_enable or force_restart then
+            obs.obs_source_media_restart(source)
+        end
+    end
+
+    obs.obs_source_release(source)
+end
+
 local function play_alert_sound()
-    local sound_map = {
-        Focus = focus_alert_sound_path,
-        ["Short Break"] = short_break_alert_sound_path,
-        ["Long Break"] = long_break_alert_sound_path
-    }
-    local sound_path = sound_map[session_type]
+    local sound_path = alert_sound_paths[session_type]
     if not sound_path or sound_path == "" then return end
     if not alert_source_name or alert_source_name == "" then return end
 
@@ -1357,12 +1456,7 @@ end
 local function fire_warning_alert()
     -- Pick the correct alert sound based on current session type
     if not alert_source_name or alert_source_name == "" then return end
-    local sound_map = {
-        Focus = focus_alert_sound_path,
-        ["Short Break"] = short_break_alert_sound_path,
-        ["Long Break"] = long_break_alert_sound_path
-    }
-    local sound_path = sound_map[session_type] or focus_alert_sound_path
+    local sound_path = alert_sound_paths[session_type] or alert_sound_paths.Focus
     if not sound_path or sound_path == "" then return end
     local source = obs.obs_get_source_by_name(alert_source_name)
     if source then
@@ -1552,6 +1646,7 @@ local function start_timer()
     mark_dirty()
     update_display_texts()
     update_background_media()
+    update_background_music(true)
     update_mic_state()
     update_source_visibility()
     update_volume()
@@ -1639,6 +1734,7 @@ local function stop_timer()
     log("Timer stopped")
     mark_dirty()
     update_display_texts()
+    update_background_music(false)
     save_state(true)
 end
 
@@ -2068,7 +2164,19 @@ local function get_or_create_scene(name)
     return scene, true
 end
 
-local function populate_scene(scene, source_list, overlay_source)
+local function populate_scene(scene, source_list, overlay_source, background_sources, music_source, alert_source)
+    if background_sources then
+        for _, source in ipairs(background_sources) do
+            if source then
+                add_source_obj_to_scene(scene, source, 0, 0)
+            end
+        end
+    end
+
+    if music_source then
+        add_source_obj_to_scene(scene, music_source, 0, 0)
+    end
+
     -- Add text sources
     local positions = {
         { source = source_list[1], x = 700, y = 300 },  -- Session
@@ -2085,9 +2193,13 @@ local function populate_scene(scene, source_list, overlay_source)
     if overlay_source then
         add_source_obj_to_scene(scene, overlay_source, 30, 30)
     end
+
+    if alert_source then
+        add_source_obj_to_scene(scene, alert_source, 0, 0)
+    end
 end
 
-local function add_sessionpulse_sources_to_active_scene(source_list, overlay_source)
+local function add_sessionpulse_sources_to_active_scene(source_list, overlay_source, background_sources, music_source, alert_source)
     if type(obs.obs_frontend_get_current_scene) ~= "function" then
         log("Quick Setup: Active scene API unavailable, sources were created only")
         return false
@@ -2106,7 +2218,7 @@ local function add_sessionpulse_sources_to_active_scene(source_list, overlay_sou
         return false
     end
 
-    populate_scene(scene, source_list, overlay_source)
+    populate_scene(scene, source_list, overlay_source, background_sources, music_source, alert_source)
 
     local scene_name = "current scene"
     if type(obs.obs_source_get_name) == "function" then
@@ -2279,6 +2391,11 @@ quick_setup = function(props, p)
     local skipped_count = 0
     local source_handles = {}
     local text_sources = {}
+    local background_sources = {}
+    local background_image_source = nil
+    local background_video_source = nil
+    local background_music_source = nil
+    local alert_source = nil
 
     local text_id = get_text_source_id()
     local text_specs = {
@@ -2344,18 +2461,117 @@ quick_setup = function(props, p)
         log("Quick Setup: Failed to create 'SP Overlay'")
     end
 
-    add_sessionpulse_sources_to_active_scene(text_sources, overlay_source)
+    local background_image_settings = obs.obs_data_create()
+    obs.obs_data_set_string(background_image_settings, "file", "")
+    local background_image_created
+    background_image_source, background_image_created =
+        get_or_create_source("SP Background Image", "image_source", background_image_settings)
+    obs.obs_data_release(background_image_settings)
+
+    if background_image_source then
+        background_sources[#background_sources + 1] = background_image_source
+        table.insert(source_handles, background_image_source)
+        if background_image_created then
+            created_count = created_count + 1
+            log("Quick Setup: Created 'SP Background Image'")
+        else
+            skipped_count = skipped_count + 1
+            log("Quick Setup: 'SP Background Image' already exists")
+        end
+    else
+        log("Quick Setup: Failed to create 'SP Background Image'")
+    end
+
+    local background_video_settings = obs.obs_data_create()
+    obs.obs_data_set_bool(background_video_settings, "is_local_file", true)
+    obs.obs_data_set_string(background_video_settings, "local_file", "")
+    obs.obs_data_set_bool(background_video_settings, "looping", true)
+    obs.obs_data_set_bool(background_video_settings, "restart_on_activate", true)
+    local background_video_created
+    background_video_source, background_video_created =
+        get_or_create_source("SP Background Video", "ffmpeg_source", background_video_settings)
+    obs.obs_data_release(background_video_settings)
+
+    if background_video_source then
+        background_sources[#background_sources + 1] = background_video_source
+        table.insert(source_handles, background_video_source)
+        if background_video_created then
+            created_count = created_count + 1
+            log("Quick Setup: Created 'SP Background Video'")
+        else
+            skipped_count = skipped_count + 1
+            log("Quick Setup: 'SP Background Video' already exists")
+        end
+    else
+        log("Quick Setup: Failed to create 'SP Background Video'")
+    end
+
+    local background_music_settings = obs.obs_data_create()
+    obs.obs_data_set_bool(background_music_settings, "is_local_file", true)
+    obs.obs_data_set_string(background_music_settings, "local_file", "")
+    obs.obs_data_set_bool(background_music_settings, "looping", true)
+    obs.obs_data_set_bool(background_music_settings, "restart_on_activate", true)
+    local background_music_created
+    background_music_source, background_music_created =
+        get_or_create_source("SP Background Music", "ffmpeg_source", background_music_settings)
+    obs.obs_data_release(background_music_settings)
+
+    if background_music_source then
+        table.insert(source_handles, background_music_source)
+        if background_music_created then
+            created_count = created_count + 1
+            log("Quick Setup: Created 'SP Background Music'")
+        else
+            skipped_count = skipped_count + 1
+            log("Quick Setup: 'SP Background Music' already exists")
+        end
+    else
+        log("Quick Setup: Failed to create 'SP Background Music'")
+    end
+
+    local alert_settings = obs.obs_data_create()
+    obs.obs_data_set_bool(alert_settings, "is_local_file", true)
+    obs.obs_data_set_string(alert_settings, "local_file", "")
+    obs.obs_data_set_bool(alert_settings, "looping", false)
+    obs.obs_data_set_bool(alert_settings, "restart_on_activate", true)
+    local alert_created
+    alert_source, alert_created = get_or_create_source("SP Alert Sound", "ffmpeg_source", alert_settings)
+    obs.obs_data_release(alert_settings)
+
+    if alert_source then
+        table.insert(source_handles, alert_source)
+        if alert_created then
+            created_count = created_count + 1
+            log("Quick Setup: Created 'SP Alert Sound'")
+        else
+            skipped_count = skipped_count + 1
+            log("Quick Setup: 'SP Alert Sound' already exists")
+        end
+    else
+        log("Quick Setup: Failed to create 'SP Alert Sound'")
+    end
+
+    add_sessionpulse_sources_to_active_scene(
+        text_sources, overlay_source, background_sources, background_music_source, alert_source)
 
     if quick_setup_settings then
         obs.obs_data_set_string(quick_setup_settings, "time_source", "SP Timer")
         obs.obs_data_set_string(quick_setup_settings, "message_source", "SP Session")
         obs.obs_data_set_string(quick_setup_settings, "focus_count_source", "SP Count")
         obs.obs_data_set_string(quick_setup_settings, "progress_bar_source", "SP Progress")
+        obs.obs_data_set_string(quick_setup_settings, "background_media_source", "SP Background Image")
+        obs.obs_data_set_string(quick_setup_settings, "background_music_source_name", "SP Background Music")
+        obs.obs_data_set_string(quick_setup_settings, "alert_source_name", "SP Alert Sound")
+        obs.obs_data_set_string(quick_setup_settings, "volume_source_name", "SP Background Music")
 
         time_source = "SP Timer"
         message_source = "SP Session"
         focus_count_source = "SP Count"
         progress_bar_source = "SP Progress"
+        background_media_source = "SP Background Image"
+        background_music_source_name = "SP Background Music"
+        alert_source_name = "SP Alert Sound"
+        volume_source_name = "SP Background Music"
 
         log("Quick Setup: Auto-assigned sources to settings")
     end
@@ -2371,7 +2587,8 @@ quick_setup = function(props, p)
             if src_grp_props then
                 local source_keys = {
                     "time_source", "message_source", "focus_count_source",
-                    "progress_bar_source", "background_media_source", "alert_source_name"
+                    "progress_bar_source", "background_media_source",
+                    "background_music_source_name", "alert_source_name", "volume_source_name"
                 }
                 for _, key in ipairs(source_keys) do
                     local sp = obs.obs_properties_get(src_grp_props, key)
@@ -2400,6 +2617,33 @@ end
 
 if rawget(_G, "__SESSION_PULSE_TEST_HOOKS") then
     _G.__SESSION_PULSE_TEST_HOOKS.quick_setup = quick_setup
+end
+
+local function set_property_visible(props, name, visible)
+    if not props or type(obs.obs_properties_get) ~= "function" then return end
+    local prop = obs.obs_properties_get(props, name)
+    if prop and type(obs.obs_property_set_visible) == "function" then
+        obs.obs_property_set_visible(prop, visible)
+    end
+end
+
+local function refresh_background_property_visibility(props, property, settings)
+    if settings == nil and property ~= nil and type(obs.obs_data_get_string) == "function" then
+        settings = property
+    end
+    local source_name = ""
+    if settings then
+        source_name = obs.obs_data_get_string(settings, "background_media_source")
+    end
+
+    local mode = get_background_source_mode(source_name)
+    local show_image = (mode == "image")
+    local show_video = (mode == "video")
+    local show_unknown = (mode == "unknown")
+
+    set_property_visible(props, "background_image_group", show_image or show_unknown)
+    set_property_visible(props, "background_video_group", show_video or show_unknown)
+    return true
 end
 
 ------------------------------------------------------------------------
@@ -2485,7 +2729,13 @@ function script_properties()
         "Progress Bar Source", obs.OBS_COMBO_TYPE_LIST, obs.OBS_COMBO_FORMAT_STRING)
     populate_source_list(p)
     p = obs.obs_properties_add_list(src_group, "background_media_source",
-        "Background Media Source", obs.OBS_COMBO_TYPE_LIST, obs.OBS_COMBO_FORMAT_STRING)
+        "Background Visual Source", obs.OBS_COMBO_TYPE_LIST, obs.OBS_COMBO_FORMAT_STRING)
+    populate_source_list(p)
+    if type(obs.obs_property_set_modified_callback) == "function" then
+        obs.obs_property_set_modified_callback(p, refresh_background_property_visibility)
+    end
+    p = obs.obs_properties_add_list(src_group, "background_music_source_name",
+        "Background Music Source", obs.OBS_COMBO_TYPE_LIST, obs.OBS_COMBO_FORMAT_STRING)
     populate_source_list(p)
     p = obs.obs_properties_add_list(src_group, "alert_source_name",
         "Alert Sound Source (Media)", obs.OBS_COMBO_TYPE_LIST, obs.OBS_COMBO_FORMAT_STRING)
@@ -2511,7 +2761,7 @@ function script_properties()
     -- ── Volume Ducking (group) ──
     local vol_group = obs.obs_properties_create()
     p = obs.obs_properties_add_list(vol_group, "volume_source_name",
-        "Music/Audio Source", obs.OBS_COMBO_TYPE_LIST, obs.OBS_COMBO_FORMAT_STRING)
+        "Ducking Target Source", obs.OBS_COMBO_TYPE_LIST, obs.OBS_COMBO_FORMAT_STRING)
     populate_source_list(p)
     obs.obs_properties_add_int_slider(vol_group, "focus_volume", "Focus Volume %", 0, 100, 5)
     obs.obs_properties_add_int_slider(vol_group, "break_volume", "Break Volume %", 0, 100, 5)
@@ -2553,18 +2803,38 @@ function script_properties()
         obs.OBS_GROUP_NORMAL, audio_group)
 
     -- ── Background Media (group) ──
-    local bg_group = obs.obs_properties_create()
-    obs.obs_properties_add_path(bg_group, "focus_background_media",
-        "Focus Background", obs.OBS_PATH_FILE,
-        "Media (*.png *.jpg *.jpeg *.bmp *.gif *.mp4 *.webm *.mov *.mkv)", nil)
-    obs.obs_properties_add_path(bg_group, "short_break_background_media",
-        "Short Break Background", obs.OBS_PATH_FILE,
-        "Media (*.png *.jpg *.jpeg *.bmp *.gif *.mp4 *.webm *.mov *.mkv)", nil)
-    obs.obs_properties_add_path(bg_group, "long_break_background_media",
-        "Long Break Background", obs.OBS_PATH_FILE,
-        "Media (*.png *.jpg *.jpeg *.bmp *.gif *.mp4 *.webm *.mov *.mkv)", nil)
-    obs.obs_properties_add_group(props, "background_media_group", "Background Media",
-        obs.OBS_GROUP_NORMAL, bg_group)
+    local bg_image_group = obs.obs_properties_create()
+    obs.obs_properties_add_path(bg_image_group, "focus_background_image",
+        "Focus Image", obs.OBS_PATH_FILE,
+        "Images (*.png *.jpg *.jpeg *.bmp *.gif)", nil)
+    obs.obs_properties_add_path(bg_image_group, "short_break_background_image",
+        "Short Break Image", obs.OBS_PATH_FILE,
+        "Images (*.png *.jpg *.jpeg *.bmp *.gif)", nil)
+    obs.obs_properties_add_path(bg_image_group, "long_break_background_image",
+        "Long Break Image", obs.OBS_PATH_FILE,
+        "Images (*.png *.jpg *.jpeg *.bmp *.gif)", nil)
+    obs.obs_properties_add_group(props, "background_image_group", "Background Images",
+        obs.OBS_GROUP_NORMAL, bg_image_group)
+
+    local bg_video_group = obs.obs_properties_create()
+    obs.obs_properties_add_path(bg_video_group, "focus_background_video",
+        "Focus Video", obs.OBS_PATH_FILE,
+        "Videos (*.mp4 *.webm *.mov *.mkv)", nil)
+    obs.obs_properties_add_path(bg_video_group, "short_break_background_video",
+        "Short Break Video", obs.OBS_PATH_FILE,
+        "Videos (*.mp4 *.webm *.mov *.mkv)", nil)
+    obs.obs_properties_add_path(bg_video_group, "long_break_background_video",
+        "Long Break Video", obs.OBS_PATH_FILE,
+        "Videos (*.mp4 *.webm *.mov *.mkv)", nil)
+    obs.obs_properties_add_group(props, "background_video_group", "Background Videos",
+        obs.OBS_GROUP_NORMAL, bg_video_group)
+
+    local bg_music_group = obs.obs_properties_create()
+    obs.obs_properties_add_path(bg_music_group, "background_music_track_path",
+        "Looping Music Track", obs.OBS_PATH_FILE,
+        "Audio (*.mp3 *.ogg *.wav *.flac *.m4a)", nil)
+    obs.obs_properties_add_group(props, "background_music_group", "Background Music",
+        obs.OBS_GROUP_NORMAL, bg_music_group)
 
     -- ── Stream Integration (checkable group) ──
     local stream_group = obs.obs_properties_create()
@@ -2593,6 +2863,7 @@ function script_properties()
     obs.obs_properties_add_group(props, "messages_group", "Session Messages",
         obs.OBS_GROUP_NORMAL, msg_group)
 
+    refresh_background_property_visibility(props, quick_setup_settings)
     return props
 end
 
@@ -2636,6 +2907,8 @@ function script_defaults(settings)
     obs.obs_data_set_default_string(settings, "transition_to_focus_message", "Back to focus time!")
     obs.obs_data_set_default_string(settings, "transition_to_short_break_message", "Time for a short break!")
     obs.obs_data_set_default_string(settings, "transition_to_long_break_message", "Time for a long break!")
+    obs.obs_data_set_default_string(settings, "background_media_source", "SP Background Image")
+    obs.obs_data_set_default_string(settings, "background_music_source_name", "SP Background Music")
 end
 
 -- Split into helpers to stay under Lua 5.1's 60-upvalue limit per function
@@ -2707,6 +2980,7 @@ local function update_source_config(settings)
     time_source = obs.obs_data_get_string(settings, "time_source")
     progress_bar_source = obs.obs_data_get_string(settings, "progress_bar_source")
     background_media_source = obs.obs_data_get_string(settings, "background_media_source")
+    background_music_source_name = obs.obs_data_get_string(settings, "background_music_source_name")
     alert_source_name = obs.obs_data_get_string(settings, "alert_source_name")
 
     focus_message = obs.obs_data_get_string(settings, "focus_message")
@@ -2717,13 +2991,20 @@ local function update_source_config(settings)
     transition_to_long_break_message = obs.obs_data_get_string(settings, "transition_to_long_break_message")
     paused_message = obs.obs_data_get_string(settings, "paused_message")
 
-    focus_alert_sound_path = obs.obs_data_get_string(settings, "focus_alert_sound_path")
-    short_break_alert_sound_path = obs.obs_data_get_string(settings, "short_break_alert_sound_path")
-    long_break_alert_sound_path = obs.obs_data_get_string(settings, "long_break_alert_sound_path")
+    alert_sound_paths.Focus = obs.obs_data_get_string(settings, "focus_alert_sound_path")
+    alert_sound_paths["Short Break"] = obs.obs_data_get_string(settings, "short_break_alert_sound_path")
+    alert_sound_paths["Long Break"] = obs.obs_data_get_string(settings, "long_break_alert_sound_path")
 
-    focus_background_media = obs.obs_data_get_string(settings, "focus_background_media")
-    short_break_background_media = obs.obs_data_get_string(settings, "short_break_background_media")
-    long_break_background_media = obs.obs_data_get_string(settings, "long_break_background_media")
+    background_image_paths.Focus = obs.obs_data_get_string(settings, "focus_background_image")
+    background_image_paths["Short Break"] = obs.obs_data_get_string(settings, "short_break_background_image")
+    background_image_paths["Long Break"] = obs.obs_data_get_string(settings, "long_break_background_image")
+    background_video_paths.Focus = obs.obs_data_get_string(settings, "focus_background_video")
+    background_video_paths["Short Break"] = obs.obs_data_get_string(settings, "short_break_background_video")
+    background_video_paths["Long Break"] = obs.obs_data_get_string(settings, "long_break_background_video")
+    legacy_background_media_paths.Focus = obs.obs_data_get_string(settings, "focus_background_media")
+    legacy_background_media_paths["Short Break"] = obs.obs_data_get_string(settings, "short_break_background_media")
+    legacy_background_media_paths["Long Break"] = obs.obs_data_get_string(settings, "long_break_background_media")
+    background_music_track_path = obs.obs_data_get_string(settings, "background_music_track_path")
 end
 
 function script_update(settings)

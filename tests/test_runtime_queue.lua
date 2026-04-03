@@ -37,6 +37,19 @@ local function make_mock_obs()
     }
     local sources = {}
 
+    local function infer_source_id(name)
+        if name == "SP Overlay" then
+            return "browser_source"
+        end
+        if name == "SP Background Image" then
+            return "image_source"
+        end
+        if name == "SP Background Video" or name == "SP Background Music" or name == "SP Alert Sound" then
+            return "ffmpeg_source"
+        end
+        return "text_gdiplus"
+    end
+
     local mock = {
         OBS_INVALID_HOTKEY_ID = -1,
         OBS_FRONTEND_EVENT_STREAMING_STARTED = 1,
@@ -95,7 +108,7 @@ local function make_mock_obs()
         if not sources[name] then
             sources[name] = {
                 name = name,
-                id = "text_gdiplus",
+                id = infer_source_id(name),
                 volume = 1.0
             }
         end
@@ -321,6 +334,7 @@ local base_settings = {
     time_source = "TimeText",
     progress_bar_source = "BarText",
     background_media_source = "",
+    background_music_source_name = "",
     alert_source_name = "",
     focus_message = "Focus Time",
     short_break_message = "Short Break",
@@ -334,7 +348,14 @@ local base_settings = {
     long_break_alert_sound_path = "",
     focus_background_media = "",
     short_break_background_media = "",
-    long_break_background_media = ""
+    long_break_background_media = "",
+    focus_background_image = "",
+    short_break_background_image = "",
+    long_break_background_image = "",
+    focus_background_video = "",
+    short_break_background_video = "",
+    long_break_background_video = "",
+    background_music_track_path = ""
 }
 
 local real_os_clock = os.clock
@@ -445,6 +466,11 @@ do
     test("resume restores running state", resumed.is_running == true)
     test("resume preserves unpaused sessions", resumed.is_paused == false)
     test("resume restores exact saved remaining time", resumed.current_time == 90)
+    local progress_source = mock_obs.sources["BarText"]
+    local progress_text = progress_source and progress_source.settings and progress_source.settings.text or ""
+    local filled_count = select(2, progress_text:gsub("█", ""))
+    local empty_count = select(2, progress_text:gsub("░", ""))
+    test("resume preserves progress bar position", filled_count == 25 and empty_count == 75)
 end
 
 section("Resume State Preservation")
@@ -521,6 +547,56 @@ do
     test("quick setup places count in current scene", mock_obs.current_scene.items["SP Count"] ~= nil)
     test("quick setup places progress in current scene", mock_obs.current_scene.items["SP Progress"] ~= nil)
     test("quick setup places overlay in current scene", mock_obs.current_scene.items["SP Overlay"] ~= nil)
+    test("quick setup places background image in current scene", mock_obs.current_scene.items["SP Background Image"] ~= nil)
+    test("quick setup places background video in current scene", mock_obs.current_scene.items["SP Background Video"] ~= nil)
+    test("quick setup places background music in current scene", mock_obs.current_scene.items["SP Background Music"] ~= nil)
+    test("quick setup places alert sound in current scene", mock_obs.current_scene.items["SP Alert Sound"] ~= nil)
+end
+
+section("Background Visual Routing")
+do
+    local settings = {}
+    for k, v in pairs(base_settings) do settings[k] = v end
+    settings.background_media_source = "SP Background Image"
+    settings.focus_background_image = "focus.png"
+    settings.short_break_background_image = "break.png"
+    settings.background_music_source_name = "SP Background Music"
+    settings.background_music_track_path = "music.mp3"
+
+    local mock_obs, hooks = load_runtime(settings)
+    hooks.on_start_button_clicked(nil, nil)
+    script_tick(0.016)
+
+    local image_source = mock_obs.sources["SP Background Image"]
+    local video_source = mock_obs.sources["SP Background Video"]
+    local music_source = mock_obs.sources["SP Background Music"]
+    test("image mode enables image source", image_source and image_source.enabled == true)
+    test("image mode disables video source", video_source and video_source.enabled == false)
+    test("image mode applies focus image path", image_source and image_source.settings and image_source.settings.file == "focus.png")
+    test("music source starts enabled", music_source and music_source.enabled == true)
+    test("music source loads configured track", music_source and music_source.settings and music_source.settings.local_file == "music.mp3")
+
+    hooks.on_stop_button_clicked(nil, nil)
+    script_tick(0.016)
+    test("music source disables on stop", music_source and music_source.enabled == false)
+end
+
+section("Background Video Routing")
+do
+    local settings = {}
+    for k, v in pairs(base_settings) do settings[k] = v end
+    settings.background_media_source = "SP Background Video"
+    settings.focus_background_video = "focus.mp4"
+
+    local mock_obs, hooks = load_runtime(settings)
+    hooks.on_start_button_clicked(nil, nil)
+    script_tick(0.016)
+
+    local image_source = mock_obs.sources["SP Background Image"]
+    local video_source = mock_obs.sources["SP Background Video"]
+    test("video mode disables image source", image_source and image_source.enabled == false)
+    test("video mode enables video source", video_source and video_source.enabled == true)
+    test("video mode applies focus video path", video_source and video_source.settings and video_source.settings.local_file == "focus.mp4")
 end
 
 cleanup_state_files()

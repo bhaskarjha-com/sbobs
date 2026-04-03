@@ -53,15 +53,19 @@ Click **one button** and SessionPulse creates everything for you:
 This automatically:
 - ✅ Creates 4 text sources (`SP Timer`, `SP Session`, `SP Count`, `SP Progress`)
 - ✅ Creates a ring overlay Browser Source (`SP Overlay`)
+- ✅ Creates placeholder background sources (`SP Background Image`, `SP Background Video`, `SP Background Music`)
+- ✅ Creates an alert Media Source (`SP Alert Sound`)
 - ✅ Adds them to your currently active scene
 - ✅ Wires all sources to the script dropdowns
 
 Check the Script Log to confirm:
 ```
-[SessionPulse] Quick Setup: ✓ Complete! Created 5 items. Press Start to begin!
+[SessionPulse] Quick Setup: ✓ Complete! Created 9 items. Press Start to begin!
 ```
 
 > **Skip to [Step 4: Set Up Hotkeys](#step-4-set-up-hotkeys)** — sources, scenes, and overlay are ready.
+
+If OBS closes during a session, reopen OBS and use **Resume Previous Session** in the script panel to continue from the exact saved timer value and progress position.
 
 ---
 

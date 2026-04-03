@@ -6,7 +6,7 @@
 
 > One script. Zero dependencies. Full automation.
 
-SessionPulse turns OBS into a productivity cockpit. Start a focus timer, and it handles everything inside your current scene: ducking music, muting your mic, swapping backgrounds, playing alerts, and updating overlays automatically. When the session ends, it transitions to break mode and reverses everything.
+SessionPulse turns OBS into a productivity cockpit. Start a focus timer, and it handles everything inside your current scene: ducking music, muting your mic, swapping background images or videos, playing alerts, and updating overlays automatically. When the session ends, it moves into the next timer phase and reverses the source-level automation without relying on OBS scene switching.
 
 ---
 
@@ -30,7 +30,7 @@ SessionPulse turns OBS into a productivity cockpit. Start a focus timer, and it 
 | **Stats Dashboard** | 7-day chart, streaks, completion rate |
 | **State File API** | 35-field JSON updated every second for integrations |
 | **Session Logging** | CSV history for analytics |
-| **Persistence** | Survives OBS restarts with atomic state saves |
+| **Persistence** | Survives OBS restarts with atomic state saves and resume-from-saved-point recovery |
 
 ---
 
@@ -45,7 +45,9 @@ SessionPulse turns OBS into a productivity cockpit. Start a focus timer, and it 
 
 Click **🚀 Quick Setup** in the script panel. Done.
 
-This creates the text sources and overlay, adds them to your current scene, and wires them into the script for a single-scene setup.
+This creates the text sources, overlay, placeholder background image/video/music sources, and the alert source, adds them to your current scene, and wires them into the script for a single-scene setup.
+
+If OBS closes or crashes mid-session, use **Resume Previous Session** to continue from the exact saved point, including the timer's progress position.
 
 ### 3. Set Hotkeys
 
@@ -78,7 +80,7 @@ Hit your Start hotkey. Watch the magic.
 | Guide | Description |
 |-------|-------------|
 | [Getting Started](docs/getting-started.md) | Zero-to-hero setup in ~10 minutes |
-| [Automation Guide](docs/automation-guide.md) | Scene switching, volume ducking, mic, filters, chapters |
+| [Automation Guide](docs/automation-guide.md) | Backgrounds, music, volume ducking, mic, filters, chapters |
 | [Overlay Customization](docs/overlay-customization.md) | Themes, colors, sizes, URL parameters |
 | [Mobile Remote](docs/mobile-remote.md) | Control from your phone |
 | [Integrations](docs/integrations.md) | Nightbot, Stream Deck, custom tools |
@@ -161,10 +163,10 @@ shared.js                  ← ES module utilities for custom integrations
 ## 🧪 Testing
 
 ```bash
-# Lua core tests (67 tests)
+# Lua core tests (70 tests)
 lua tests/test_session_pulse.lua
 
-# JavaScript frontend tests (55 tests)
+# JavaScript frontend tests (80 tests)
 node tests/test_frontend.js
 ```
 

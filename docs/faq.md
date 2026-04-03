@@ -28,6 +28,7 @@ Common issues and their solutions, organized by category.
 
 - SessionPulse auto-saves state to `session_state.json` on every meaningful change.
 - After restarting OBS, look for the **Resume Previous Session** option in the script settings.
+- Resume restores the exact saved timer value and progress position; it does not reset the segment back to the beginning.
 - If `session_state.json` is missing or corrupted, the state can't be restored.
 
 ### OBS freezes / "Not Responding" when session transitions
@@ -60,7 +61,7 @@ Common issues and their solutions, organized by category.
 
 ### Overlay doesn't update / is frozen
 
-- The overlay polls `session_state.json` every 500ms. If it's not updating:
+- The overlay polls `session_state.json` every 750ms. If it's not updating:
   - Check that the file exists in the SessionPulse folder
   - Try removing and re-adding the Browser Source
   - Check OBS Script Log for write errors
@@ -105,6 +106,23 @@ Common issues and their solutions, organized by category.
 3. **Sound files set?** — Configure file paths in the Alert Sounds section.
 4. **Source in active scene?** — The Media Source must be in the **currently active scene** to play.
 5. **Volume not zero?** — Check the Media Source's volume in OBS's audio mixer.
+
+Quick Setup creates `SP Alert Sound` automatically, so in most cases you only need to assign the audio files.
+
+### Background image or video doesn't change
+
+1. **Correct source type selected?** — `Background Visual Source` must point to either `SP Background Image` or `SP Background Video`.
+2. **Matching file fields filled?** — Image sources use the `Focus/Break Image` fields, while media sources use the `Focus/Break Video` fields.
+3. **Source in active scene?** — The selected background source must be present in the current scene.
+
+Quick Setup creates both `SP Background Image` and `SP Background Video`, so you can pick the one that matches your setup.
+
+### Background music doesn't play
+
+1. **Media Source exists?** — Use a Media Source such as `SP Background Music`.
+2. **Selected in settings?** — Choose it in **Background Music Source**.
+3. **Track set?** — Set **Looping Music Track** to an audio file.
+4. **Timer running?** — Background music starts only while the timer is active.
 
 ### Warning sounds don't trigger
 

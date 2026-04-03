@@ -55,7 +55,7 @@ The script is divided into exactly 23 sections, labeled with standard `---` comm
 4. **Helpers**: Formatting, math, and JSON text processing.
 5. **Session History Log**: Appends sessions to `session_history.csv`.
 6. **Session Persistence**: Saves/Loads `session_state.json` via atomic writes.
-7. **OBS Source Interaction**: Modifies OBS Text, Media, and Browser sources.
+7. **OBS Source Interaction**: Modifies OBS Text, Image, Media, and Browser sources.
 8. **Session Automation**: Transitions stay inside the current scene and queue source-level effects for safe execution in `script_tick()`.
 9. **Mic Control**: Toggles muted state.
 10. **Source Visibility**: Enables/disables comma-separated sources.
@@ -69,7 +69,7 @@ The script is divided into exactly 23 sections, labeled with standard `---` comm
 18. **Hotkey Callbacks**: Thin integration layer to the Controls.
 19. **Frontend Events**: Hooks for stream/recording toggles.
 20. **Source/Scene Enumeration**: OBS SDK dropdown population logic.
-21. **Quick Setup Wizard**: Automated source and scene generator for first-timers.
+21. **Quick Setup Wizard**: Automated source-and-overlay generator that places the text sources, overlay, background image/video/music sources, and alert source into the active scene.
 22. **OBS Script Interface**: Standard OBS `script_properties` and `script_update`.
 23. **Lifecycle**: OBS `script_load`, `script_save`, `script_unload`.
 

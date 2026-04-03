@@ -44,7 +44,7 @@ timer_overlay.html?theme=neon&size=300&font=Outfit&showStats=false
 | `size` | `220` | Ring diameter in pixels | `?size=300` |
 | `font` | `Inter` | Any [Google Font](https://fonts.google.com) name | `?font=Outfit` |
 | `showStats` | `true` | Show session count below timer | `?showStats=false` |
-| `showNext` | `true` | Show "Next: Short Break" and "Ends" text | `?showNext=false` |
+| `showNext` | `true` | Show "Next: Short Break · Ends 14:25" helper text | `?showNext=false` |
 
 ### Custom Colors
 
