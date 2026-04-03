@@ -28,35 +28,15 @@ All automation triggers on **session transitions** (Focus → Break, Break → F
 
 ---
 
-## Scene Switching
+## Scene Layouts
 
-Automatically switch OBS scenes when sessions change.
+SessionPulse no longer switches OBS scenes automatically. The stable workflow is to keep the timer inside your current scene and let the script automate sources, audio, filters, overlays, and alerts there.
 
-### Setup
+### Recommended setup
 
-1. **Create your scenes** — e.g., `Focus Scene` (no chat, minimal UI) and `Break Scene` (chat visible, camera larger)
-2. In script settings, find the **Scene Switching** section (checkable group)
-3. Enable it ✅
-4. Select scenes from the dropdowns:
-   - **Focus Scene** → your focused work scene
-   - **Short Break Scene** → your short break scene
-   - **Long Break Scene** → your long break scene
-
-### How It Works
-
-| When | OBS switches to |
-|------|----------------|
-| Focus session starts | Focus Scene |
-| Short Break starts | Short Break Scene |
-| Long Break starts | Long Break Scene |
-| Timer stops or resets | *(no change)* |
-| Timer pauses | *(no change)* |
-
-### Tips
-
-- If you leave a dropdown empty, that transition won't switch scenes
-- Scene switching only happens at transitions — pausing doesn't trigger a switch
-- You can use the same scene for Short and Long breaks
+1. Build your Focus and Break presentation using sources or groups inside a stable scene
+2. Let SessionPulse handle source visibility, audio ducking, overlays, text, and alerts
+3. If you need a completely different scene, switch it manually or use a dedicated scene-management tool outside SessionPulse
 
 ---
 

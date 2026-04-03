@@ -55,8 +55,6 @@ This automatically:
 - ✅ Creates a ring overlay Browser Source (`SP Overlay`)
 - ✅ Creates two scenes (`SP Focus` and `SP Break`) with all sources positioned
 - ✅ Wires all sources to the script dropdowns
-- ✅ Enables scene switching between Focus and Break scenes
-- ✅ Switches you to the Focus scene
 
 Check the Script Log to confirm:
 ```

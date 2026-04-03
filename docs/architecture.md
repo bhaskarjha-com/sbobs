@@ -56,7 +56,7 @@ The script is divided into exactly 23 sections, labeled with standard `---` comm
 5. **Session History Log**: Appends sessions to `session_history.csv`.
 6. **Session Persistence**: Saves/Loads `session_state.json` via atomic writes.
 7. **OBS Source Interaction**: Modifies OBS Text, Media, and Browser sources.
-8. **Scene Switching**: Queues switches via `pending_scene_name`; executed in `script_tick()` (not `timer_add`) to avoid cross-thread deadlock.
+8. **Session Automation**: Transitions stay inside the current scene and queue source-level effects for safe execution in `script_tick()`.
 9. **Mic Control**: Toggles muted state.
 10. **Source Visibility**: Enables/disables comma-separated sources.
 11. **Volume Ducking**: Ease-in-out audio fades.
@@ -107,7 +107,6 @@ flowchart LR
 Major interactions with the OBS runtime:
 - `obs_get_source_by_name`: Finds a source reference (must be released with `obs_source_release`).
 - `obs_source_update`: Pushes updated properties (text strings, files) to a source.
-- `obs_frontend_set_current_scene`: Switches scenes automatically.
 - `obs_source_set_muted` / `obs_source_set_volume`: Audio automation.
 - `obs_source_set_enabled` / `obs_source_filter_set_enabled`: Toggles visibility/filters.
 - `obs_properties_create`: Generates the UI displayed in OBS under Scripts.

@@ -124,16 +124,10 @@ local warning_break_end_seconds = 30
 local enable_session_log = false
 
 -- Stream integration toggles
-local enable_scene_switching = false
 local enable_chapter_markers = true
 local enable_mic_control = false
 local auto_start_on_stream = false
 local auto_stop_on_stream_end = false
-
--- Scene names
-local focus_scene = ""
-local short_break_scene = ""
-local long_break_scene = ""
 
 -- Mic source
 local mic_source_name = ""
@@ -201,6 +195,7 @@ local hotkey_reset = obs.OBS_INVALID_HOTKEY_ID
 -- Queued control actions
 local pending_control_actions = {}
 local pending_runtime_effects = {}
+local scene_switching_deprecation_logged = false
 
 ------------------------------------------------------------------------
 -- 4. Helpers
@@ -863,11 +858,11 @@ local function harden_sessionpulse_browser_source(source_name)
 end
 
 ------------------------------------------------------------------------
--- 8. Scene Switching
+-- 8. Legacy Scene Switching Notes
 --
--- Automated OBS scene transitions based on session state.
--- Functions: schedule_scene_switch (sets flag), scene switch is executed
---            in script_tick() to avoid cross-thread deadlock.
+-- Automatic OBS scene switching has been removed from SessionPulse's
+-- supported workflow because it was the only reproducible trigger for
+-- transition-time crashes in this project.
 --
 -- ARCHITECTURE NOTE — WHY script_tick AND NOT timer_add:
 -- obs_frontend_set_current_scene() posts to the Qt UI thread and blocks.
@@ -877,27 +872,13 @@ end
 -- script_tick() runs in the main application loop's execution context,
 -- which is the documented safe context for frontend API calls from Lua.
 ------------------------------------------------------------------------
-local pending_scene_name = nil       -- target scene name, or nil if no switch pending
-local pending_scene_epoch = 0        -- os.time() when the switch was requested
-local scene_switch_cooldown = 0      -- os.clock() of last executed switch
-
-local function schedule_scene_switch()
-    if not enable_scene_switching then return end
-    local scene_map = {
-        Focus = focus_scene,
-        ["Short Break"] = short_break_scene,
-        ["Long Break"] = long_break_scene
-    }
-    local target = scene_map[session_type]
-    if not target or target == "" then return end
-
-    pending_scene_name = target
-    pending_scene_epoch = os.time()
+--[[ legacy scene-switch code removed
     log("Scene switch queued → " .. target)
 end
 
+]]
 ------------------------------------------------------------------------
--- 9. Mic Control
+-- 8. Mic Control
 --
 -- Mute/unmute microphone logic for Focus vs. Break sessions.
 -- Functions: update_mic_state
@@ -1216,7 +1197,6 @@ local function update_session(new_type, duration, message)
     warning_break_end_fired = false
 
     show_transition_msg(message)
-    schedule_scene_switch()
     if background_media_source and background_media_source ~= "" then
         queue_runtime_effect("background_media", "session_transition")
     end
@@ -1584,7 +1564,6 @@ local function stop_timer()
     overtime_epoch = 0
     focus_streak = 0
     completed_focus_sessions = 0
-    pending_scene_name = nil
 
     -- Reset to correct initial state for current timer mode
     if timer_mode == "pomodoro" then
@@ -1885,7 +1864,6 @@ if rawget(_G, "__SESSION_PULSE_TEST_HOOKS") then
             is_paused = is_paused,
             session_type = session_type,
             current_time = current_time,
-            pending_scene_name = pending_scene_name,
             completed_focus_sessions = completed_focus_sessions
         }
     end
@@ -2183,32 +2161,16 @@ local function quick_setup(props, p)
         obs.obs_data_set_string(quick_setup_settings, "focus_count_source", "SP Count")
         obs.obs_data_set_string(quick_setup_settings, "progress_bar_source", "SP Progress")
 
-        -- Auto-configure scene switching
-        obs.obs_data_set_bool(quick_setup_settings, "enable_scene_switching", true)
-        obs.obs_data_set_string(quick_setup_settings, "focus_scene", "SP Focus")
-        obs.obs_data_set_string(quick_setup_settings, "short_break_scene", "SP Break")
-        obs.obs_data_set_string(quick_setup_settings, "long_break_scene", "SP Break")
-
         -- Apply the settings immediately
         time_source = "SP Timer"
         message_source = "SP Session"
         focus_count_source = "SP Count"
         progress_bar_source = "SP Progress"
-        enable_scene_switching = true
-        focus_scene = "SP Focus"
-        short_break_scene = "SP Break"
-        long_break_scene = "SP Break"
 
-        log("Quick Setup: Auto-assigned sources and scenes to settings")
+        log("Quick Setup: Auto-assigned sources to settings")
     end
 
     -- ── 6. Switch to Focus scene ──
-    local focus_scene_source = obs.obs_get_source_by_name("SP Focus")
-    if focus_scene_source then
-        obs.obs_frontend_set_current_scene(focus_scene_source)
-        obs.obs_source_release(focus_scene_source)
-        log("Quick Setup: Switched to SP Focus scene")
-    end
 
     -- ── 7. Report results ──
     if created_count > 0 then
@@ -2218,26 +2180,8 @@ local function quick_setup(props, p)
     end
 
     -- ── Re-populate scene list dropdowns ──
-    -- The scene dropdowns were populated during script_properties(), *before*
-    -- Quick Setup created "SP Focus" / "SP Break".  OBS's property system
-    -- silently rejects list values that don't match any existing item and
-    -- falls back to "(None)" (value "").  We must refresh the dropdown
-    -- item lists so the newly-created scene names are valid selections
-    -- before we apply settings.
-    local scene_props = { "focus_scene", "short_break_scene", "long_break_scene" }
-    for _, key in ipairs(scene_props) do
-        -- Walk into the checkable group "enable_scene_switching" to find child props
-        local grp = obs.obs_properties_get(props, "enable_scene_switching")
-        if grp then
-            local grp_props = obs.obs_property_group_content(grp)
-            if grp_props then
-                local sp = obs.obs_properties_get(grp_props, key)
-                if sp then populate_scene_list(sp) end
-            end
-        end
-    end
-
-    -- Also re-populate source list dropdowns (same issue for newly-created sources)
+    -- Refresh source dropdowns so the newly-created SessionPulse sources
+    -- are valid selections before we apply settings back into OBS.
     local src_grp = obs.obs_properties_get(props, "text_sources_group")
     if src_grp then
         local src_grp_props = obs.obs_property_group_content(src_grp)
@@ -2353,20 +2297,7 @@ function script_properties()
     obs.obs_properties_add_group(props, "text_sources_group", "OBS Sources",
         obs.OBS_GROUP_NORMAL, src_group)
 
-    -- ── Scene Switching (checkable group) ──
-    local scene_group = obs.obs_properties_create()
-    p = obs.obs_properties_add_list(scene_group, "focus_scene",
-        "Focus Scene", obs.OBS_COMBO_TYPE_LIST, obs.OBS_COMBO_FORMAT_STRING)
-    populate_scene_list(p)
-    p = obs.obs_properties_add_list(scene_group, "short_break_scene",
-        "Short Break Scene", obs.OBS_COMBO_TYPE_LIST, obs.OBS_COMBO_FORMAT_STRING)
-    populate_scene_list(p)
-    p = obs.obs_properties_add_list(scene_group, "long_break_scene",
-        "Long Break Scene", obs.OBS_COMBO_TYPE_LIST, obs.OBS_COMBO_FORMAT_STRING)
-    populate_scene_list(p)
-    obs.obs_properties_add_group(props, "enable_scene_switching", "Scene Switching",
-        obs.OBS_GROUP_CHECKABLE, scene_group)
-
+    -- Scene switching has been removed for stability.
     -- ── Mic Control (checkable group) ──
     local mic_group = obs.obs_properties_create()
     obs.obs_properties_add_bool(mic_group, "mute_mic_during_focus",
@@ -2552,10 +2483,10 @@ local function update_automation_config(settings)
     auto_stop_on_stream_end = obs.obs_data_get_bool(settings, "auto_stop_on_stream_end")
     enable_chapter_markers = obs.obs_data_get_bool(settings, "enable_chapter_markers")
 
-    enable_scene_switching = obs.obs_data_get_bool(settings, "enable_scene_switching")
-    focus_scene = obs.obs_data_get_string(settings, "focus_scene")
-    short_break_scene = obs.obs_data_get_string(settings, "short_break_scene")
-    long_break_scene = obs.obs_data_get_string(settings, "long_break_scene")
+    if obs.obs_data_get_bool(settings, "enable_scene_switching") and not scene_switching_deprecation_logged then
+        log("Scene switching is disabled in SessionPulse for stability; the saved setting is ignored.")
+        scene_switching_deprecation_logged = true
+    end
 
     enable_mic_control = obs.obs_data_get_bool(settings, "enable_mic_control")
     mute_mic_during_focus = obs.obs_data_get_bool(settings, "mute_mic_during_focus")
@@ -2635,11 +2566,12 @@ function script_tick(seconds)
     local effects_processed = process_pending_runtime_effects()
     if effects_processed > 0 then return end
 
-    -- Execute pending scene switch in the SAFE execution context.
+    return
+
+    --[[ scene switching removed for stability.
     -- This is the fix for the cross-thread deadlock: obs_frontend_set_current_scene
     -- must NOT be called from timer_add callbacks (graphics thread, Lua mutex held).
     -- script_tick runs in the main app loop, which is safe for frontend API calls.
-    if pending_scene_name then
         -- Cooldown: skip if a switch was executed less than 100ms ago
         local now = os.clock()
         if now - scene_switch_cooldown < 0.1 then return end
@@ -2670,6 +2602,7 @@ function script_tick(seconds)
             log("Scene switch failed — source not found: " .. target)
         end
     end
+]]
 end
 
 function script_load(settings)

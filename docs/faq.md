@@ -32,9 +32,9 @@ Common issues and their solutions, organized by category.
 
 ### OBS freezes / "Not Responding" when session transitions
 
-- **Fixed in v5.4.1.** This was a cross-thread deadlock caused by calling `obs_frontend_set_current_scene()` from a `timer_add` callback. The Lua mutex and Qt UI thread would wait on each other.
-- **Solution:** Update to v5.4.1+. Scene switches are now executed in `script_tick()`, which runs in the safe execution context.
-- If you're on an older version: disable **Scene Switching** in the automation settings as a temporary workaround.
+- SessionPulse no longer switches OBS scenes automatically.
+- If OBS was crashing during Focus/Break transitions, keep Scene Switching disabled and use source-level automation instead.
+- If you still need different layouts, switch scenes manually or with a dedicated scene-management tool outside SessionPulse.
 
 ---
 
@@ -118,9 +118,8 @@ Common issues and their solutions, organized by category.
 
 ### Scene switching doesn't work
 
-1. **Enabled?** — The Scene Switching section is a **checkable group** — make sure the checkbox next to the section title is checked.
-2. **Scenes selected?** — Choose scenes from the dropdowns (they show your existing scenes/scene collections).
-3. **Timing** — Scenes only switch at **session transitions**, not during pause/resume.
+- Automatic scene switching has been removed from SessionPulse for stability.
+- Keep your timer flow inside one stable scene, or change scenes manually if you need a full layout swap.
 
 ### Volume ducking isn't smooth
 

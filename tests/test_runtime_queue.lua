@@ -233,10 +233,10 @@ local base_settings = {
     auto_start_on_stream = false,
     auto_stop_on_stream_end = false,
     enable_chapter_markers = false,
-    enable_scene_switching = true,
-    focus_scene = "FocusScene",
-    short_break_scene = "BreakScene",
-    long_break_scene = "LongScene",
+    enable_scene_switching = false,
+    focus_scene = "",
+    short_break_scene = "",
+    long_break_scene = "",
     enable_mic_control = false,
     mute_mic_during_focus = true,
     mic_source_name = "",
@@ -298,10 +298,7 @@ do
     test("queue drained after script_tick", hooks.get_pending_control_count() == 0)
     test("skip executed during script_tick", after.is_running == true and after.session_type == "Short Break")
     test("skip updated OBS sources when processed", mock_obs.counters.get_source_by_name > 0)
-    test("skip defers scene switch to a later script_tick", mock_obs.counters.frontend_scene_switches == 0)
-
-    script_tick(0.016)
-    test("skip switches to break scene on next script_tick", mock_obs.counters.frontend_scene_switches == 1 and mock_obs.last_scene == "BreakScene")
+    test("skip does not switch scenes", mock_obs.counters.frontend_scene_switches == 0)
 end
 
 section("Frontend Event Queue")
@@ -346,10 +343,7 @@ do
 
     script_tick(0.016)
     test("auto-advance executes during script_tick", hooks.get_runtime_state().session_type == "Short Break")
-    test("auto-advance defers scene switch to a later script_tick", mock_obs.counters.frontend_scene_switches == 0)
-
-    script_tick(0.016)
-    test("auto-advance switches scene on next script_tick", mock_obs.counters.frontend_scene_switches == 1 and mock_obs.last_scene == "BreakScene")
+    test("auto-advance does not switch scenes", mock_obs.counters.frontend_scene_switches == 0)
 end
 
 cleanup_state_files()

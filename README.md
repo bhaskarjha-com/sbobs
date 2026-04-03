@@ -1,12 +1,12 @@
 # SessionPulse
 
-**Session automation engine for OBS Studio** — Pomodoro timer, scene switching, volume ducking, overlays, and more.
+**Session automation engine for OBS Studio** — Pomodoro timer, source-level automation, overlays, and more.
 
 ![banner](assets/banner.png)
 
 > One script. Zero dependencies. Full automation.
 
-SessionPulse turns OBS into a productivity cockpit. Start a focus timer, and it handles everything: switching scenes, ducking music, muting your mic, swapping backgrounds, playing alerts — all automatically. When the session ends, it transitions to break mode and reverses everything.
+SessionPulse turns OBS into a productivity cockpit. Start a focus timer, and it handles everything inside your current scene: ducking music, muting your mic, swapping backgrounds, playing alerts, and updating overlays automatically. When the session ends, it transitions to break mode and reverses everything.
 
 ---
 
@@ -15,7 +15,6 @@ SessionPulse turns OBS into a productivity cockpit. Start a focus timer, and it 
 | Category | What It Does |
 |----------|-------------|
 | **Timer Modes** | Pomodoro, Stopwatch, Countdown, Custom Intervals |
-| **Scene Switching** | Auto-switch OBS scenes per session type |
 | **Volume Ducking** | Smooth fade between focus/break volume levels |
 | **Mic Control** | Auto-mute during focus, unmute during breaks |
 | **Filter Toggle** | Enable/disable OBS filters per session |
