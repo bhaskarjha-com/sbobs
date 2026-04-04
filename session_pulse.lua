@@ -357,6 +357,10 @@ local function get_state_file_path()
     return script_path() .. "session_state.json"
 end
 
+function get_resume_state_file_path()
+    return script_path() .. "session_resume.json"
+end
+
 local function get_log_file_path()
     return script_path() .. "session_history.csv"
 end
@@ -483,6 +487,37 @@ end
 ------------------------------------------------------------------------
 update_control_bridge_state = nil
 
+write_json_to_path = function(path, json)
+    local tmp_path = path .. ".tmp"
+    local file = io.open(tmp_path, "w")
+    if not file then return false end
+
+    local ok = file:write(json)
+    if ok == false then
+        file:close()
+        os.remove(tmp_path)
+        return false
+    end
+
+    local closed = file:close()
+    if closed == false then
+        os.remove(tmp_path)
+        return false
+    end
+
+    if os.rename(tmp_path, path) then
+        return true
+    end
+
+    os.remove(path)
+    if os.rename(tmp_path, path) then
+        return true
+    end
+
+    os.remove(tmp_path)
+    return false
+end
+
 local function get_next_session_type()
     if timer_mode ~= "pomodoro" then return "" end
     if session_type == "Focus" then
@@ -499,11 +534,6 @@ local function save_state(force)
     if not force and not state_dirty then return end
     local now = os.time()
     if not force and now == last_save_time then return end
-
-    local path = get_state_file_path()
-    local tmp_path = path .. ".tmp"
-    local file = io.open(tmp_path, "w")
-    if not file then return end
 
     local display_time = compute_current_time()
     local total = session_target_duration
@@ -654,23 +684,26 @@ local function save_state(force)
         now
     )
 
-    file:write(json)
-    file:close()
+    local state_saved = write_json_to_path(get_state_file_path(), json)
 
-    -- Atomic rename
-    os.remove(path)
-    os.rename(tmp_path, path)
+    if state_saved then
+        if is_running then
+            write_json_to_path(get_resume_state_file_path(), json)
+        elseif not has_pending_resume then
+            os.remove(get_resume_state_file_path())
+            os.remove(get_resume_state_file_path() .. ".tmp")
+        end
 
-    state_dirty = false
-    last_save_time = now
+        state_dirty = false
+        last_save_time = now
+    end
 
     if update_control_bridge_state then
         update_control_bridge_state(true)
     end
 end
 
-local function load_state()
-    local path = get_state_file_path()
+load_state_from_path = function(path)
     local file = io.open(path, "r")
     if not file then return nil end
 
@@ -763,8 +796,32 @@ local function load_state()
     return state
 end
 
+local function load_state()
+    return load_state_from_path(get_state_file_path())
+end
+
+load_resume_state = function()
+    return load_state_from_path(get_resume_state_file_path())
+end
+
 local function refresh_pending_resume_state()
-    local state = load_state()
+    local state = load_resume_state()
+    if not state or not state.is_running then
+        -- Backward compatibility for older installs that only had session_state.json.
+        local legacy_state = load_state()
+        if legacy_state and legacy_state.is_running then
+            local live_path = get_state_file_path()
+            local live_file = io.open(live_path, "r")
+            if live_file then
+                local live_content = live_file:read("*all")
+                live_file:close()
+                if live_content and live_content ~= "" then
+                    write_json_to_path(get_resume_state_file_path(), live_content)
+                end
+            end
+            state = legacy_state
+        end
+    end
     has_pending_resume = state ~= nil and state.is_running == true
     return state
 end
@@ -773,6 +830,8 @@ local function delete_state_file()
     os.remove(get_state_file_path())
     -- Clean up temp file if it exists
     os.remove(get_state_file_path() .. ".tmp")
+    os.remove(get_resume_state_file_path())
+    os.remove(get_resume_state_file_path() .. ".tmp")
 end
 
 -- Forward declarations (referenced by apply_saved_state before definition)
@@ -1849,7 +1908,10 @@ update_control_bridge_state = function(force)
         if raw_value and raw_value ~= "" then
             local raw_kind = json_string_value(raw_value, "kind")
             local raw_command = json_string_value(raw_value, "command")
-            if raw_kind == "command" or raw_command == "show_status" or raw_command == "clear_status" then
+            if raw_kind == "command"
+                or raw_command == "show_status"
+                or raw_command == "clear_status"
+                or raw_command == "resume_previous_session" then
                 return
             end
         end
@@ -1892,6 +1954,11 @@ function process_overlay_control_command()
     elseif command == "clear_status" then
         if not has_pending_control_action("clear_status_message") then
             queue_control_action("clear_status_message", "overlay")
+        end
+        handled = true
+    elseif command == "resume_previous_session" then
+        if not has_pending_control_action("resume_previous_session") then
+            queue_control_action("resume_previous_session", "overlay")
         end
         handled = true
     end
@@ -1954,6 +2021,7 @@ local function start_timer()
         is_paused = false
         log("Timer resumed")
     else
+        has_pending_resume = false
         is_running = true
         is_paused = false
         is_overtime = false
@@ -2056,6 +2124,7 @@ local function stop_timer()
     end
 
     is_running = false
+    has_pending_resume = false
     is_paused = false
     show_transition = false
     is_overtime = false
@@ -2216,7 +2285,10 @@ local function subtract_time()
 end
 
 local function resume_previous_session()
-    local state = load_state()
+    local state = load_resume_state()
+    if (not state or not state.is_running) then
+        state = load_state()
+    end
     if state then
         apply_saved_state(state)
         log("Resumed previous session")
@@ -3565,6 +3637,8 @@ function script_update(settings)
             update_volume()
             update_filters()
             update_control_bridge_state(true)
+            mark_dirty()
+            save_state(true)
             return
         end
 

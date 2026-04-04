@@ -31,7 +31,7 @@ SessionPulse turns OBS into a productivity cockpit. Start a focus timer, and it 
 | **Stats Dashboard** | 7-day chart, streaks, completion rate |
 | **State File API** | 38-field JSON updated every second for integrations |
 | **Session Logging** | CSV history for analytics |
-| **Persistence** | Survives OBS restarts with atomic state saves and resume-from-saved-point recovery |
+| **Persistence** | Survives OBS restarts with atomic saves, a clean public state file, and resume-from-saved-point recovery |
 
 ---
 
@@ -96,9 +96,10 @@ Hit your Start hotkey. Watch the magic.
 session_pulse.lua          ← Core engine (Lua, runs inside OBS)
                               ↓ writes
                          session_state.json    ← Public state API (38 fields, updated every second)
+                         session_resume.json   ← Internal recovery snapshot for Resume Previous Session
                               ↑ reads
 ┌──────────────────┬──────────────────┬────────────────┬──────────────┐
-│ timer_dock.html  │ timer_overlay.html│ timer_stats.html│ timer_remote │
+│ timer_dock.html  │ timer_overlay.html│ timer_stats.html│ timer_remote.html │
 │ (Control Dock)   │ (Ring Overlay)   │ (Stats Page)   │ (Mobile)     │
 │ WebSocket + Poll │ Poll only        │ CSV + Poll     │ WebSocket    │
 └──────────────────┴──────────────────┴────────────────┴──────────────┘
@@ -111,6 +112,8 @@ shared.js                  ← ES module utilities for custom integrations
 ## 📊 State File API
 
 `session_state.json` is the integration point — any tool that reads JSON can connect.
+
+`session_resume.json` is separate on purpose: it is an internal recovery snapshot for the Resume Previous Session flow, not the public integration contract.
 
 <details>
 <summary><strong>All 38 fields</strong> (click to expand)</summary>
@@ -167,10 +170,10 @@ shared.js                  ← ES module utilities for custom integrations
 ## 🧪 Testing
 
 ```bash
-# Lua core tests (70 tests)
+# Lua core tests (72 tests)
 lua tests/test_session_pulse.lua
 
-# JavaScript frontend tests (80 tests)
+# JavaScript frontend tests (104 tests)
 node tests/test_frontend.js
 ```
 

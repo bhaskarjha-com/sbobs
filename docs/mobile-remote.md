@@ -67,7 +67,9 @@ The address will look like `192.168.x.x` or `10.0.x.x`.
 1. Copy `timer_remote.html` to your phone
 2. Open it in a mobile browser
 
-> **Note:** Option A is better because the remote can also poll `session_state.json` for live status updates.
+This works because the remote is now fully self-contained.
+
+> **Note:** Option A is still better if you want live timer/status display, because the remote can then fetch `session_state.json` over HTTP.
 
 ---
 
@@ -94,17 +96,19 @@ Once connected, you get large, touch-friendly buttons:
 
 | Button | Action |
 |--------|--------|
-| ▶️ **Start / Pause** | Toggle timer |
-| ⏭️ **Skip** | Jump to next session |
-| ⏹️ **Stop** | End session completely |
-| ➕ **+ Time** | Add 5 minutes |
-| ➖ **- Time** | Subtract 5 minutes |
-| 🔄 **Reset** | Clear all progress |
+| Start / Pause | Toggle timer |
+| Skip | Jump to next session |
+| Stop | End session completely |
+| + Time | Add 5 minutes |
+| - Time | Subtract 5 minutes |
+| Reset | Clear all progress |
 
 The remote also shows:
 - Current session type and timer
 - Session progress
 - Connection status indicator
+
+If `session_state.json` is not reachable over HTTP, the buttons still work and the remote falls back to a controls-only view.
 
 ---
 
@@ -145,6 +149,7 @@ Now you have a home screen icon that opens the remote like a native app.
 - The timer display uses HTTP polling of `session_state.json`
 - Make sure you're running the HTTP server (`python -m http.server 8080`)
 - Make sure the **HTTP Port** field in the remote matches the server port
+- Controls still work without the HTTP server; only the live display is missing
 
 ### "Timer display works but buttons don't"
 

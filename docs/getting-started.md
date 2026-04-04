@@ -1,32 +1,32 @@
-# Getting Started with SessionPulse
+﻿# Getting Started with SessionPulse
 
 > **Time to complete:** ~10 minutes  
 > **Prerequisite:** OBS Studio 28+ installed ([download here](https://obsproject.com))
 
-This guide takes you from zero to a fully running Pomodoro timer with overlay — no prior OBS scripting experience needed.
+This guide takes you from zero to a fully running Pomodoro timer with overlay â€” no prior OBS scripting experience needed.
 
 ---
 
 ## Step 1: Download SessionPulse
 
-**Option A — Git clone** (recommended):
+**Option A â€” Git clone** (recommended):
 ```bash
 git clone https://github.com/bhaskarjha-com/sbobs.git
 ```
 
-**Option B — Download ZIP:**
+**Option B â€” Download ZIP:**
 1. Go to the [GitHub repo](https://github.com/bhaskarjha-com/sbobs)
-2. Click the green **Code** button → **Download ZIP**
+2. Click the green **Code** button â†’ **Download ZIP**
 3. Extract the ZIP to a permanent location (e.g., `D:\tools\SessionPulse\`)
 
-> ⚠️ **Important:** Don't put it in a temporary folder. OBS remembers the script path — if you move it later, OBS won't find it.
+> âš ï¸ **Important:** Don't put it in a temporary folder. OBS remembers the script path â€” if you move it later, OBS won't find it.
 
 ---
 
 ## Step 2: Load the Script in OBS
 
 1. Open **OBS Studio**
-2. Go to **Tools** → **Scripts**
+2. Go to **Tools** â†’ **Scripts**
 3. Click the **+** button (bottom-left)
 4. Navigate to where you extracted SessionPulse
 5. Select **`session_pulse.lua`**
@@ -36,34 +36,34 @@ You should see the script appear in the scripts list. The Script Log (bottom pan
 
 ```
 [SessionPulse] Loaded v5.4.1
-[SessionPulse] State saved → session_state.json
+[SessionPulse] State saved â†’ session_state.json
 ```
 
 If you see errors instead, check the [FAQ](faq.md).
 
 ---
 
-## Step 3: Quick Setup (Recommended) 🚀
+## Step 3: Quick Setup (Recommended) ðŸš€
 
 Click **one button** and SessionPulse creates everything for you:
 
-1. In the script settings panel (right side), click **🚀 Quick Setup**
+1. In the script settings panel (right side), click **ðŸš€ Quick Setup**
 2. Done.
 
 This automatically:
-- ✅ Creates 5 text sources (`SP Timer`, `SP Session`, `SP Count`, `SP Progress`, `SP Status`)
-- ✅ Creates a ring overlay Browser Source (`SP Overlay`)
-- ✅ Creates placeholder background sources (`SP Background Image`, `SP Background Video`, `SP Background Music`)
-- ✅ Creates an alert Media Source (`SP Alert Sound`)
-- ✅ Adds them to your currently active scene
-- ✅ Wires all sources to the script dropdowns
+- âœ… Creates 5 text sources (`SP Timer`, `SP Session`, `SP Count`, `SP Progress`, `SP Status`)
+- âœ… Creates a ring overlay Browser Source (`SP Overlay`)
+- âœ… Creates placeholder background sources (`SP Background Image`, `SP Background Video`, `SP Background Music`)
+- âœ… Creates an alert Media Source (`SP Alert Sound`)
+- âœ… Adds them to your currently active scene
+- âœ… Wires all sources to the script dropdowns
 
 Check the Script Log to confirm:
 ```
-[SessionPulse] Quick Setup: ✓ Complete! Created 10 items. Press Start to begin!
+[SessionPulse] Quick Setup: âœ“ Complete! Created 11 items. Press Start to begin!
 ```
 
-> **Skip to [Step 4: Set Up Hotkeys](#step-4-set-up-hotkeys)** — sources, scenes, and overlay are ready.
+> **Skip to [Step 4: Set Up Hotkeys](#step-4-set-up-hotkeys)** â€” sources, scenes, and overlay are ready.
 
 If OBS closes during a session, reopen OBS and use **Resume Previous Session** in the script panel to continue from the exact saved timer value and progress position.
 
@@ -78,10 +78,10 @@ Create these in your scene before configuring the script:
 
 | Source Name | Purpose | Required? |
 |------------|---------|-----------|
-| `Timer` | Shows countdown `24:59` | ✅ Yes |
+| `Timer` | Shows countdown `24:59` | âœ… Yes |
 | `Session` | Shows `Focus Time`, `Short Break`, etc. | Recommended |
 | `Focus Count` | Shows `Done: 3/6` | Optional |
-| `Progress` | Shows `████░░░░` bar | Optional |
+| `Progress` | Shows `â–ˆâ–ˆâ–ˆâ–ˆâ–‘â–‘â–‘â–‘` bar | Optional |
 
 1. In your **Scene**, click **+** (under Sources)
 2. Select **Text (GDI+)** (Windows) or **Text (FreeType 2)** (Mac/Linux)
@@ -90,12 +90,12 @@ Create these in your scene before configuring the script:
 
 ### Connect Sources to the Script
 
-1. Go to **Tools** → **Scripts** → select **SessionPulse**
+1. Go to **Tools** â†’ **Scripts** â†’ select **SessionPulse**
 2. In the script settings panel, use the dropdown menus:
-   - **Timer Text Source** → select your timer source
-   - **Session Message Source** → select your session source
-   - **Focus Count Source** → select your count source
-   - **Progress Bar Source** → select your progress source
+   - **Timer Text Source** â†’ select your timer source
+   - **Session Message Source** â†’ select your session source
+   - **Focus Count Source** â†’ select your count source
+   - **Progress Bar Source** â†’ select your progress source
 
 </details>
 
@@ -105,7 +105,7 @@ Create these in your scene before configuring the script:
 
 SessionPulse uses OBS hotkeys to control the timer. Set them up:
 
-1. Go to **Settings** → **Hotkeys**
+1. Go to **Settings** â†’ **Hotkeys**
 2. Scroll down or search for **SessionPulse**
 3. Assign keys to at least these:
 
@@ -123,7 +123,7 @@ Optional but useful:
 | Subtract Time | `Ctrl+F10` | Remove 5 minutes from current session |
 | Reset All | `Ctrl+F11` | Clear all progress and start fresh |
 
-4. Click **Apply** → **OK**
+4. Click **Apply** â†’ **OK**
 
 ---
 
@@ -137,10 +137,10 @@ Optional but useful:
 
 **Default Pomodoro cycle:**
 ```
-Focus (25 min) → Short Break (5 min) → Focus → Short Break → Focus → Short Break → Focus → Long Break (15 min)
+Focus (25 min) â†’ Short Break (5 min) â†’ Focus â†’ Short Break â†’ Focus â†’ Short Break â†’ Focus â†’ Long Break (15 min)
 ```
 
-> 💡 **Tip:** You can change all durations in the script settings (Tools → Scripts → select SessionPulse).
+> ðŸ’¡ **Tip:** You can change all durations in the script settings (Tools â†’ Scripts â†’ select SessionPulse).
 
 ---
 
@@ -148,10 +148,10 @@ Focus (25 min) → Short Break (5 min) → Focus → Short Break → Focus → S
 
 The ring overlay adds a beautiful visual timer to your stream:
 
-1. In your scene, click **+** (add source) → **Browser**
+1. In your scene, click **+** (add source) â†’ **Browser**
 2. Name it `Timer Overlay`
-3. Check **✅ Local file**
-4. Click **Browse** → navigate to your SessionPulse folder → select **`timer_overlay.html`**
+3. Check **âœ… Local file**
+4. Click **Browse** â†’ navigate to your SessionPulse folder â†’ select **`timer_overlay.html`**
 5. Set **Width: 220**, **Height: 220**
 6. Click **OK**
 7. Position the overlay where you want it on your stream
@@ -166,7 +166,7 @@ You should see a circular ring with the countdown timer. It will be green during
 
 The dock gives you clickable buttons inside OBS instead of using hotkeys:
 
-1. Go to **View** → **Docks** → **Custom Browser Docks**
+1. Go to **View** â†’ **Docks** â†’ **Custom Browser Docks**
 2. Fill in:
    - **Dock Name:** `SessionPulse`
    - **URL:** `file:///` + full path to `timer_dock.html`
@@ -181,14 +181,14 @@ The dock gives you clickable buttons inside OBS instead of using hotkeys:
 A new dock panel appears with Start/Pause, Skip, Stop buttons, a timer display, session stats, and the live `SP Status` / AFK message when one is active.
 
 **For control buttons to work**, you need WebSocket enabled:
-1. Go to **Tools** → **WebSocket Server Settings**
-2. Check **✅ Enable WebSocket server**
+1. Go to **Tools** â†’ **WebSocket Server Settings**
+2. Check **âœ… Enable WebSocket server**
 3. Note the port (default: `4455`)
 4. If you set a password, add `?ws_password=YOUR_PASSWORD` to the dock URL
 
 ---
 
-## You're Done! 🎉
+## You're Done! ðŸŽ‰
 
 Your setup should now look like this:
 
@@ -221,3 +221,5 @@ flowchart TB
 | Set up Nightbot or Stream Deck | [Integrations](integrations.md) |
 | Control from your phone | [Mobile Remote](mobile-remote.md) |
 | Something isn't working | [FAQ & Troubleshooting](faq.md) |
+
+

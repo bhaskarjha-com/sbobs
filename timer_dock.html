@@ -892,12 +892,19 @@ function syncStatusEditorFromState(state) {
   }
 }
 
-function buildStatusCommandPayload(command, message, durationMinutes) {
+function buildControlCommandPayload(command, extra = {}) {
   return JSON.stringify({
+    kind: 'command',
     command,
+    nonce: nextRequestId(),
+    ...extra
+  });
+}
+
+function buildStatusCommandPayload(command, message, durationMinutes) {
+  return buildControlCommandPayload(command, {
     message: message || '',
-    duration_minutes: durationMinutes || 0,
-    nonce: nextRequestId()
+    duration_minutes: durationMinutes || 0
   });
 }
 
@@ -944,6 +951,32 @@ async function sendStatusCommand(command, message, durationMinutes) {
     setStatusEditorFeedback(error.message || 'Unable to update status', true);
   } finally {
     setStatusEditorBusy(false);
+  }
+}
+
+async function sendResumePreviousCommand() {
+  if (controlActionInFlight) return;
+  setControlButtonsBusy(true);
+  setWsStatus('connecting');
+  try {
+    await ensureControlBridgeInput();
+    await callObs('SetInputSettings', {
+      inputName: 'SP Control',
+      inputSettings: {
+        text: buildControlCommandPayload('resume_previous_session')
+      },
+      overlay: true
+    });
+
+    setWsStatus('connected');
+    applyOptimisticActionState('session_pulse_resume_previous');
+    scheduleActionStateRefresh(90);
+    scheduleActionStateRefresh(260);
+  } catch (error) {
+    console.warn('[Dock] Resume command failed:', error.message);
+    setWsStatus('disconnected');
+  } finally {
+    setControlButtonsBusy(false);
   }
 }
 
@@ -1404,7 +1437,7 @@ wsIndicator.addEventListener('click', () => {
 btnStartPause.addEventListener('click', () => triggerHotkey('session_pulse_start_pause'));
 btnStop.addEventListener('click', () => triggerHotkey('session_pulse_stop'));
 btnSkip.addEventListener('click', () => triggerHotkey('session_pulse_skip'));
-btnResumePrevious.addEventListener('click', () => triggerHotkey('session_pulse_resume_previous'));
+btnResumePrevious.addEventListener('click', () => sendResumePreviousCommand());
 btnAddTime.addEventListener('click', () => triggerHotkey('session_pulse_add_time'));
 btnSubTime.addEventListener('click', () => triggerHotkey('session_pulse_sub_time'));
 btnReset.addEventListener('click', () => triggerHotkey('session_pulse_reset'));

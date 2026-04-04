@@ -26,10 +26,10 @@ Common issues and their solutions, organized by category.
 
 ### Timer doesn't survive OBS restart
 
-- SessionPulse auto-saves state to `session_state.json` on every meaningful change.
+- SessionPulse auto-saves public runtime state to `session_state.json` and keeps a separate internal recovery snapshot in `session_resume.json`.
 - After restarting OBS, look for the **Resume Previous Session** option in the script settings.
 - Resume restores the exact saved timer value and progress position; it does not reset the segment back to the beginning.
-- If `session_state.json` is missing or corrupted, the state can't be restored.
+- If the resume snapshot is missing or corrupted, the session cannot be restored.
 
 ### OBS freezes / "Not Responding" when session transitions
 
@@ -181,8 +181,9 @@ Quick Setup creates both `SP Background Image` and `SP Background Video`, so you
 
 ### `session_state.json` is empty or contains `{}`
 
-- The file is written atomically (temp file → rename). An empty file means a write was interrupted.
+- The file is written atomically (temp file -> rename/restore fallback). An empty file usually means a write was interrupted or the folder is blocked by permissions.
 - Restart the timer — it will re-create the state file.
+- If Resume Previous Session also disappears, check whether `session_resume.json` is being created in the same folder.
 
 ---
 
@@ -193,7 +194,7 @@ Quick Setup creates both `SP Background Image` and `SP Background Video`, so you
 No measurable impact:
 - The timer tick runs once per second via OBS's timer API
 - JSON file writes are atomic and take <1ms
-- Overlay polling uses `XMLHttpRequest` every 500ms (negligible)
+- Overlay polling uses lightweight fetch polling roughly every 750ms (negligible)
 - Volume fading uses OBS's native volume API with smooth interpolation
 
 ### Does it work with 100+ sources?
@@ -212,7 +213,7 @@ Yes — SessionPulse only interacts with the sources you configure in the dropdo
 ### How do I start fresh?
 
 1. Stop the timer
-2. Delete `session_state.json` from the SessionPulse folder
+2. Delete `session_state.json` and `session_resume.json` from the SessionPulse folder
 3. Restart OBS or reload the script (Tools → Scripts → 🔄)
 
 ### How do I keep my CSV history but reset the timer?

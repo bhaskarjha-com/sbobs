@@ -10,6 +10,8 @@ local test_count = 0
 local PATH_SEP = package.config:sub(1, 1)
 local TEST_STATE_FILE = "tests" .. PATH_SEP .. "session_state.json"
 local TEST_STATE_TMP_FILE = TEST_STATE_FILE .. ".tmp"
+local TEST_RESUME_FILE = "tests" .. PATH_SEP .. "session_resume.json"
+local TEST_RESUME_TMP_FILE = TEST_RESUME_FILE .. ".tmp"
 
 local function test(name, condition)
     test_count = test_count + 1
@@ -324,6 +326,18 @@ local function cleanup_state_files()
         tmp_file:write("")
         tmp_file:close()
     end
+
+    local resume_file = io.open(TEST_RESUME_FILE, "w")
+    if resume_file then
+        resume_file:write("")
+        resume_file:close()
+    end
+
+    local resume_tmp_file = io.open(TEST_RESUME_TMP_FILE, "w")
+    if resume_tmp_file then
+        resume_tmp_file:write("")
+        resume_tmp_file:close()
+    end
 end
 
 local function load_runtime(settings, options)
@@ -506,7 +520,7 @@ do
     local mock_obs, hooks = load_runtime(base_settings)
 
     fake_now = 1035
-    local state_file = io.open(TEST_STATE_FILE, "w")
+    local state_file = io.open(TEST_RESUME_FILE, "w")
     state_file:write(table.concat({
         "{",
         '  "version": "5.4.1",',
@@ -539,6 +553,43 @@ do
     local filled_count = select(2, progress_text:gsub("█", ""))
     local empty_count = select(2, progress_text:gsub("░", ""))
     test("resume preserves progress bar position", filled_count == 25 and empty_count == 75)
+end
+
+section("Control Bridge Resume Command")
+do
+    local mock_obs, hooks = load_runtime(base_settings)
+
+    fake_now = 1035
+    local state_file = io.open(TEST_RESUME_FILE, "w")
+    state_file:write(table.concat({
+        "{",
+        '  "version": "5.4.1",',
+        '  "timer_mode": "pomodoro",',
+        '  "is_running": true,',
+        '  "is_paused": false,',
+        '  "session_type": "Focus",',
+        '  "current_time": 90,',
+        '  "cycle_count": 2,',
+        '  "completed_focus_sessions": 2,',
+        '  "total_focus_seconds": 1500,',
+        '  "custom_segment_index": 0,',
+        '  "session_epoch": 1000,',
+        '  "session_pause_total": 0,',
+        '  "session_target_duration": 120,',
+        '  "timestamp": 1030',
+        "}"
+    }, "\n"))
+    state_file:close()
+
+    mock_obs.sources["SP Control"].settings.text = '{"kind":"command","command":"resume_previous_session","nonce":"resume-1"}'
+
+    script_tick(0.016)
+    script_tick(0.016)
+
+    local resumed = hooks.get_runtime_state()
+    test("control bridge resume restores running state", resumed.is_running == true)
+    test("control bridge resume restores exact saved remaining time", resumed.current_time == 90)
+    test("control bridge resume consumes command and restores state payload", mock_obs.sources["SP Control"].settings.text:find('"kind":"state"', 1, true) ~= nil)
 end
 
 section("Resume State Preservation")
@@ -579,8 +630,7 @@ end
 section("Resumable Startup Display")
 do
     fake_now = 1030
-    local state_file = io.open(TEST_STATE_FILE, "w")
-    state_file:write(table.concat({
+    local resumable_json = table.concat({
         "{",
         '  "version": "5.4.1",',
         '  "timer_mode": "pomodoro",',
@@ -621,7 +671,10 @@ do
         '  "resume_available": true,',
         '  "timestamp": 1030',
         "}"
-    }, "\n"))
+    }, "\n")
+
+    local state_file = io.open(TEST_STATE_FILE, "w")
+    state_file:write(resumable_json)
     state_file:close()
 
     local mock_obs = load_runtime(base_settings, { preserve_state = true })

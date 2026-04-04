@@ -2,6 +2,8 @@
 
 SessionPulse exposes timer state through `session_state.json` — a file that updates every second with 38 fields. Any tool that can read a JSON file or receive HTTP can integrate with it.
 
+`session_resume.json` is separate and internal. Integrations should read `session_state.json`, not the resume snapshot.
+
 ---
 
 ## Architecture

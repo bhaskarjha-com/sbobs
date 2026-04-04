@@ -7,6 +7,7 @@ SessionPulse ships as a flat directory — OBS Browser Sources use `file://` pro
 |------|---------|
 | `session_pulse.lua` | Core engine — all timer logic, OBS automation, state management |
 | `session_state.json` | Runtime state file (38 fields, written every second, gitignored) |
+| `session_resume.json` | Internal resume snapshot used by Resume Previous Session |
 | `session_history.csv` | Session log (appended on completion, gitignored) |
 | `timer_dock.html` | WebSocket control dock (Start/Pause/Skip/Stop + stats) |
 | `timer_overlay.html` | Circular ring overlay (themeable, poll-based) |
@@ -54,7 +55,7 @@ The script is divided into exactly 23 sections, labeled with standard `---` comm
 3. **Hotkey IDs**: Handles mapped to physical keyboard triggers.
 4. **Helpers**: Formatting, math, and JSON text processing.
 5. **Session History Log**: Appends sessions to `session_history.csv`.
-6. **Session Persistence**: Saves/Loads `session_state.json` via atomic writes.
+6. **Session Persistence**: Saves/Loads `session_state.json` plus the internal `session_resume.json` snapshot via atomic writes.
 7. **OBS Source Interaction**: Modifies OBS Text, Image, Media, and Browser sources.
 8. **Session Automation**: Transitions stay inside the current scene and queue source-level effects for safe execution in `script_tick()`.
 9. **Mic Control**: Toggles muted state.
@@ -160,4 +161,4 @@ Stored in `session_history.csv`:
 
 - **Single Lua File Architecture:** We actively chose to maintain a single Lua file (2300+ lines) instead of modularizing. OBS Lua's module system does not natively include script paths in `package.path`, and the isolated global variables make shared states precarious.
 - **Wallclock vs Tick-based Timer:** Previous versions relied on `timer_tick` decrementing a counter, which caused massive drift during lag. V5.0+ migrated strictly to wallclock metrics comparing `os.time()` against `session_epoch`.
-- **Atomic Writes:** Generating `.tmp` file and running `os.rename` guarantees that external watchers (like Streamer.bot or web dashboards) never read a half-written `session_state.json`.
+- **Atomic Writes:** State and resume snapshots are written through temp files plus rename/restore fallback so external watchers never read partial JSON and resume recovery does not clobber the previous good snapshot.
