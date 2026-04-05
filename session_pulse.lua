@@ -2729,20 +2729,45 @@ function ensure_overlay_control_scene_item()
     if control_scene then
         add_source_obj_to_scene(control_scene, control_source, -10000, -10000)
         ensured = true
+    else
+        -- SP Internal scene could not be created; fall back to keeping
+        -- SP Control in the active scene at offscreen coordinates so it
+        -- is never orphaned and garbage-collected by OBS.
+        if type(obs.obs_frontend_get_current_scene) == "function" then
+            local active_source = obs.obs_frontend_get_current_scene()
+            if active_source then
+                local active_scene = obs.obs_scene_from_source(active_source)
+                if active_scene then
+                    add_source_obj_to_scene(active_scene, control_source, -10000, -10000)
+                    ensured = true
+                end
+                obs.obs_source_release(active_source)
+            end
+        end
+        if ensured then
+            log("SP Internal scene unavailable — SP Control placed in active scene (offscreen)")
+        else
+            log("Warning: SP Control could not be placed in any scene")
+        end
     end
 
-    if type(obs.obs_frontend_get_scenes) == "function" then
-        local scene_sources = obs.obs_frontend_get_scenes()
-        if scene_sources then
-            for _, scene_source in ipairs(scene_sources) do
-                local scene = obs.obs_scene_from_source(scene_source)
-                local scene_name = type(obs.obs_source_get_name) == "function" and obs.obs_source_get_name(scene_source) or ""
-                if scene and scene_name ~= status_state.control_scene_name then
-                    remove_source_obj_from_scene(scene, status_state.control_source_name)
+    -- Only clean up SP Control from other scenes if we successfully
+    -- placed it somewhere.  Removing it without a home causes OBS to
+    -- garbage-collect the source (refcount reaches 0).
+    if ensured and control_scene then
+        if type(obs.obs_frontend_get_scenes) == "function" then
+            local scene_sources = obs.obs_frontend_get_scenes()
+            if scene_sources then
+                for _, scene_source in ipairs(scene_sources) do
+                    local scene = obs.obs_scene_from_source(scene_source)
+                    local scene_name = type(obs.obs_source_get_name) == "function" and obs.obs_source_get_name(scene_source) or ""
+                    if scene and scene_name ~= status_state.control_scene_name then
+                        remove_source_obj_from_scene(scene, status_state.control_source_name)
+                    end
                 end
-            end
-            if type(obs.source_list_release) == "function" then
-                obs.source_list_release(scene_sources)
+                if type(obs.source_list_release) == "function" then
+                    obs.source_list_release(scene_sources)
+                end
             end
         end
     end
