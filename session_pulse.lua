@@ -2524,8 +2524,7 @@ local function on_frontend_event(event)
         end
     elseif obs.OBS_FRONTEND_EVENT_SCENE_CHANGED and event == obs.OBS_FRONTEND_EVENT_SCENE_CHANGED then
         if should_ensure_overlay_control_source() then
-            ensure_overlay_control_source()
-            ensure_overlay_control_scene_item()
+            ensure_overlay_control()
             update_control_bridge_state(true)
         end
     end
@@ -2591,7 +2590,12 @@ function get_or_create_source(name, source_id, settings)
     return nil, false
 end
 
-function ensure_overlay_control_source()
+-- ensure_overlay_control: creates SP Control source AND places it in a
+-- scene in one atomic operation so the source reference is never released
+-- while it has no scene home (which causes OBS to garbage-collect it).
+-- Returns: was_created (bool)
+function ensure_overlay_control()
+    -- 1. Create or find the SP Control text source
     local text_id = get_text_source_id()
     local settings = obs.obs_data_create()
     obs.obs_data_set_string(settings, "text", "")
@@ -2604,13 +2608,51 @@ function ensure_overlay_control_source()
     obs.obs_data_release(font)
     obs.obs_data_set_int(settings, "color", 0xFFFFFF)
 
-    local source, was_created = get_or_create_source(status_state.control_source_name, text_id, settings)
+    local control_source, was_created = get_or_create_source(status_state.control_source_name, text_id, settings)
     obs.obs_data_release(settings)
 
-    if source then
-        obs.obs_source_release(source)
+    if not control_source then return false end
+
+    -- 2. Place in a scene BEFORE releasing our reference.
+    --    This ensures the scene holds a reference so OBS never GCs the source.
+    local control_scene, _ = get_or_create_scene(status_state.control_scene_name)
+    if control_scene then
+        add_source_obj_to_scene(control_scene, control_source, -10000, -10000)
+    else
+        -- SP Internal scene unavailable; fall back to active scene at offscreen coords
+        if type(obs.obs_frontend_get_current_scene) == "function" then
+            local active_source = obs.obs_frontend_get_current_scene()
+            if active_source then
+                local active_scene = obs.obs_scene_from_source(active_source)
+                if active_scene then
+                    add_source_obj_to_scene(active_scene, control_source, -10000, -10000)
+                end
+                obs.obs_source_release(active_source)
+            end
+        end
     end
 
+    -- 3. Clean up from other scenes only if SP Internal is the designated home
+    if control_scene then
+        if type(obs.obs_frontend_get_scenes) == "function" then
+            local scene_sources = obs.obs_frontend_get_scenes()
+            if scene_sources then
+                for _, scene_source in ipairs(scene_sources) do
+                    local scene = obs.obs_scene_from_source(scene_source)
+                    local scene_name = type(obs.obs_source_get_name) == "function" and obs.obs_source_get_name(scene_source) or ""
+                    if scene and scene_name ~= status_state.control_scene_name then
+                        remove_source_obj_from_scene(scene, status_state.control_source_name)
+                    end
+                end
+                if type(obs.source_list_release) == "function" then
+                    obs.source_list_release(scene_sources)
+                end
+            end
+        end
+    end
+
+    -- 4. NOW safe to release — a scene item holds a reference
+    obs.obs_source_release(control_source)
     return was_created
 end
 
@@ -2719,62 +2761,6 @@ function populate_scene(scene, source_list, overlay_source, background_sources, 
     end
 end
 
-function ensure_overlay_control_scene_item()
-    local control_source = obs.obs_get_source_by_name(status_state.control_source_name)
-    local ensured = false
-
-    if not control_source then return false end
-
-    local control_scene, _ = get_or_create_scene(status_state.control_scene_name)
-    if control_scene then
-        add_source_obj_to_scene(control_scene, control_source, -10000, -10000)
-        ensured = true
-    else
-        -- SP Internal scene could not be created; fall back to keeping
-        -- SP Control in the active scene at offscreen coordinates so it
-        -- is never orphaned and garbage-collected by OBS.
-        if type(obs.obs_frontend_get_current_scene) == "function" then
-            local active_source = obs.obs_frontend_get_current_scene()
-            if active_source then
-                local active_scene = obs.obs_scene_from_source(active_source)
-                if active_scene then
-                    add_source_obj_to_scene(active_scene, control_source, -10000, -10000)
-                    ensured = true
-                end
-                obs.obs_source_release(active_source)
-            end
-        end
-        if ensured then
-            log("SP Internal scene unavailable — SP Control placed in active scene (offscreen)")
-        else
-            log("Warning: SP Control could not be placed in any scene")
-        end
-    end
-
-    -- Only clean up SP Control from other scenes if we successfully
-    -- placed it somewhere.  Removing it without a home causes OBS to
-    -- garbage-collect the source (refcount reaches 0).
-    if ensured and control_scene then
-        if type(obs.obs_frontend_get_scenes) == "function" then
-            local scene_sources = obs.obs_frontend_get_scenes()
-            if scene_sources then
-                for _, scene_source in ipairs(scene_sources) do
-                    local scene = obs.obs_scene_from_source(scene_source)
-                    local scene_name = type(obs.obs_source_get_name) == "function" and obs.obs_source_get_name(scene_source) or ""
-                    if scene and scene_name ~= status_state.control_scene_name then
-                        remove_source_obj_from_scene(scene, status_state.control_source_name)
-                    end
-                end
-                if type(obs.source_list_release) == "function" then
-                    obs.source_list_release(scene_sources)
-                end
-            end
-        end
-    end
-
-    obs.obs_source_release(control_source)
-    return ensured
-end
 
 local function add_sessionpulse_sources_to_active_scene(source_list, overlay_source, background_sources, music_source, alert_source)
     if type(obs.obs_frontend_get_current_scene) ~= "function" then
@@ -3013,14 +2999,13 @@ quick_setup = function(props, p)
         end
     end
 
-    if ensure_overlay_control_source() then
+    if ensure_overlay_control() then
         created_count = created_count + 1
         log("Quick Setup: Created '" .. status_state.control_source_name .. "'")
     else
         skipped_count = skipped_count + 1
         log("Quick Setup: '" .. status_state.control_source_name .. "' already exists")
     end
-    ensure_overlay_control_scene_item()
     update_control_bridge_state(true)
 
     local overlay_path = script_path() .. "timer_overlay.html"
@@ -3625,8 +3610,7 @@ function script_update(settings)
     update_source_config(settings)
     harden_sessionpulse_browser_source("SP Overlay")
     if should_ensure_overlay_control_source() then
-        ensure_overlay_control_source()
-        ensure_overlay_control_scene_item()
+        ensure_overlay_control()
         update_control_bridge_state(true)
     end
 
@@ -3741,8 +3725,7 @@ function script_load(settings)
     obs.timer_add(timer_tick, 1000)
     harden_sessionpulse_browser_source("SP Overlay")
     if should_ensure_overlay_control_source() then
-        ensure_overlay_control_source()
-        ensure_overlay_control_scene_item()
+        ensure_overlay_control()
         update_control_bridge_state(true)
     end
 
