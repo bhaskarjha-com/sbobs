@@ -59,8 +59,9 @@ shared.js ← Reference utilities (ES module for custom integrations)
 **Automated tests** — run these first, they must pass:
 
 ```bash
-lua tests/test_session_pulse.lua    # 67 tests: CSV, JSON, timing, parsing
-node tests/test_frontend.js         # 55 tests: CSV parser, formatting, badges
+lua tests/test_session_pulse.lua      # 72 tests: CSV, JSON, timing, parsing
+lua tests/test_runtime_queue.lua      # 79 tests: control queue, resume, status, setup
+node tests/test_frontend.js           # 104 tests: CSV parser, formatting, badges, hardening
 ```
 
 **Manual verification in OBS** — verify after code changes:

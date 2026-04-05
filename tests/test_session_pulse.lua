@@ -109,21 +109,19 @@ test("Large value (with hours)", format_time(3661) == "1:01:01")
 -- ═══════════════════════════════════════════════════════
 section("Duration Formatting")
 
-local function format_duration_human(total_seconds)
-    if total_seconds <= 0 then return "0m" end
-    local hours = math.floor(total_seconds / 3600)
-    local mins = math.floor((total_seconds % 3600) / 60)
-    if hours > 0 and mins > 0 then
-        return string.format("%dh %dm", hours, mins)
-    elseif hours > 0 then
-        return string.format("%dh", hours)
-    else
-        return string.format("%dm", mins)
-    end
+local function format_duration_human(seconds)
+    if seconds < 60 then return seconds .. "s" end
+    local mins = math.floor(seconds / 60)
+    if mins < 60 then return mins .. "m" end
+    local hours = math.floor(mins / 60)
+    local rem_mins = mins % 60
+    if rem_mins == 0 then return hours .. "h" end
+    return hours .. "h " .. rem_mins .. "m"
 end
 
-test("0 seconds", format_duration_human(0) == "0m")
-test("30 seconds (rounds to 0m)", format_duration_human(30) == "0m")
+test("0 seconds", format_duration_human(0) == "0s")
+test("30 seconds", format_duration_human(30) == "30s")
+test("59 seconds", format_duration_human(59) == "59s")
 test("90 seconds", format_duration_human(90) == "1m")
 test("3600 seconds", format_duration_human(3600) == "1h")
 test("3660 seconds", format_duration_human(3660) == "1h 1m")
@@ -267,6 +265,7 @@ local function build_state_json()
         '  "session_epoch": %d,\n' ..
         '  "session_pause_total": %d,\n' ..
         '  "session_target_duration": %d,\n' ..
+        '  "resume_available": %s,\n' ..
         '  "timestamp": %d\n' ..
         '}',
         "5.4.1", "pomodoro",
@@ -286,6 +285,7 @@ local function build_state_json()
         os.time() + 300,
         7200, 14400, 2,
         os.time(), 0, 1500,
+        "false",
         os.time()
     )
     return json
@@ -303,7 +303,7 @@ test("JSON contains show_transition", json_out:find('"show_transition": false') 
 -- Count fields by counting ":" that follow quoted keys
 local field_count = 0
 for _ in json_out:gmatch('"[%w_]+":') do field_count = field_count + 1 end
-test("JSON has 38 fields", field_count == 38)
+test("JSON has 39 fields", field_count == 39)
 
 -- ═══════════════════════════════════════════════════════
 -- Test 10: Focus Streak Logic

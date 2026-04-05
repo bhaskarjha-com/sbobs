@@ -23,3 +23,9 @@ Desktop.ini
 
 # Manual Test
 test_walkthrough.md
+
+# Test artifacts
+tests/session_state.json
+tests/session_state.json.tmp
+tests/session_resume.json
+tests/session_resume.json.tmp

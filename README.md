@@ -29,7 +29,7 @@ SessionPulse turns OBS into a productivity cockpit. Start a focus timer, and it 
 | **Control Dock** | Clickable buttons inside OBS via WebSocket |
 | **Mobile Remote** | Control from your phone over WiFi |
 | **Stats Dashboard** | 7-day chart, streaks, completion rate |
-| **State File API** | 38-field JSON updated every second for integrations |
+| **State File API** | 39-field JSON updated every second for integrations |
 | **Session Logging** | CSV history for analytics |
 | **Persistence** | Survives OBS restarts with atomic saves, a clean public state file, and resume-from-saved-point recovery |
 
@@ -95,7 +95,7 @@ Hit your Start hotkey. Watch the magic.
 ```
 session_pulse.lua          ← Core engine (Lua, runs inside OBS)
                               ↓ writes
-                         session_state.json    ← Public state API (38 fields, updated every second)
+                         session_state.json    ← Public state API (39 fields, updated every second)
                          session_resume.json   ← Internal recovery snapshot for Resume Previous Session
                               ↑ reads
 ┌──────────────────┬──────────────────┬────────────────┬──────────────┐
@@ -116,7 +116,7 @@ shared.js                  ← ES module utilities for custom integrations
 `session_resume.json` is separate on purpose: it is an internal recovery snapshot for the Resume Previous Session flow, not the public integration contract.
 
 <details>
-<summary><strong>All 38 fields</strong> (click to expand)</summary>
+<summary><strong>All 39 fields</strong> (click to expand)</summary>
 
 ```json
 {
@@ -157,6 +157,7 @@ shared.js                  ← ES module utilities for custom integrations
   "session_epoch": 1711983000,
   "session_pause_total": 0,
   "session_target_duration": 1500,
+  "resume_available": false,
   "timestamp": 1711983266
 }
 ```
@@ -172,6 +173,9 @@ shared.js                  ← ES module utilities for custom integrations
 ```bash
 # Lua core tests (72 tests)
 lua tests/test_session_pulse.lua
+
+# Lua runtime queue tests (79 tests)
+lua tests/test_runtime_queue.lua
 
 # JavaScript frontend tests (104 tests)
 node tests/test_frontend.js

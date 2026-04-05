@@ -6,7 +6,7 @@ SessionPulse ships as a flat directory — OBS Browser Sources use `file://` pro
 | File | Purpose |
 |------|---------|
 | `session_pulse.lua` | Core engine — all timer logic, OBS automation, state management |
-| `session_state.json` | Runtime state file (38 fields, written every second, gitignored) |
+| `session_state.json` | Runtime state file (39 fields, written every second, gitignored) |
 | `session_resume.json` | Internal resume snapshot used by Resume Previous Session |
 | `session_history.csv` | Session log (appended on completion, gitignored) |
 | `timer_dock.html` | WebSocket control dock (Start/Pause/Skip/Stop + stats) |
@@ -57,7 +57,7 @@ The script is divided into exactly 23 sections, labeled with standard `---` comm
 5. **Session History Log**: Appends sessions to `session_history.csv`.
 6. **Session Persistence**: Saves/Loads `session_state.json` plus the internal `session_resume.json` snapshot via atomic writes.
 7. **OBS Source Interaction**: Modifies OBS Text, Image, Media, and Browser sources.
-8. **Session Automation**: Transitions stay inside the current scene and queue source-level effects for safe execution in `script_tick()`.
+8. **Legacy Scene Switching Notes**: Documents why automatic OBS scene switching was removed (cross-thread deadlock between Qt UI thread and Lua mutex in `timer_add` callbacks).
 9. **Mic Control**: Toggles muted state.
 10. **Source Visibility**: Enables/disables comma-separated sources.
 11. **Volume Ducking**: Ease-in-out audio fades.

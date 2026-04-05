@@ -248,13 +248,14 @@ const expectedFields = [
   "next_session_in", "sessions_remaining", "break_suggestion", "stream_duration",
   "chat_status_line", "session_label", "daily_focus_seconds", "daily_goal_seconds",
   "status_active", "status_message", "status_until_epoch", "focus_streak",
-  "session_epoch", "session_pause_total", "session_target_duration", "timestamp"
+  "session_epoch", "session_pause_total", "session_target_duration",
+  "resume_available", "timestamp"
 ];
 
-test("Expected 38 fields in state JSON", expectedFields.length === 38);
+test("Expected 39 fields in state JSON", expectedFields.length === 39);
 
 // Verify the README claims "38+ fields" — count includes version
-const docClaim = 38;
+const docClaim = 39;
 test(`README says "${docClaim}+" which covers ${expectedFields.length} fields`, expectedFields.length >= docClaim - 1);
 
 // ═══════════════════════════════════════════════════════════════════════════════

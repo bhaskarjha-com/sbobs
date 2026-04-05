@@ -1156,7 +1156,7 @@ end
 
 ]]
 ------------------------------------------------------------------------
--- 8. Mic Control
+-- 9. Mic Control
 --
 -- Mute/unmute microphone logic for Focus vs. Break sessions.
 -- Functions: update_mic_state

@@ -16,8 +16,20 @@ jobs:
       - name: Install Lua
         run: sudo apt-get update && sudo apt-get install -y lua5.1
 
-      - name: Run Lua tests
+      - name: Run Lua core tests
         run: lua tests/test_session_pulse.lua
+
+  lua-runtime-tests:
+    name: Lua Runtime Queue Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Lua
+        run: sudo apt-get update && sudo apt-get install -y lua5.1
+
+      - name: Run Lua runtime queue tests
+        run: lua tests/test_runtime_queue.lua
 
   js-tests:
     name: JS Frontend Tests
