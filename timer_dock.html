@@ -1290,43 +1290,6 @@ async function getObsInputText(inputName) {
   return responseData.inputSettings.text || '';
 }
 
-function parseTimerText(timerText) {
-  if (!timerText || timerText === '--:--') return null;
-  const clean = String(timerText).trim().replace(/^\+/, '');
-  const parts = clean.split(':').map(part => parseInt(part, 10));
-  if (parts.some(Number.isNaN)) return null;
-  if (parts.length === 2) return (parts[0] * 60) + parts[1];
-  if (parts.length === 3) return (parts[0] * 3600) + (parts[1] * 60) + parts[2];
-  return null;
-}
-
-function inferSessionType(messageText) {
-  const text = String(messageText || '').toLowerCase();
-  if (text.includes('short break')) return 'Short Break';
-  if (text.includes('long break')) return 'Long Break';
-  if (text.includes('focus')) return 'Focus';
-  if (text.includes('countdown')) return 'Countdown';
-  if (text.includes('stopwatch')) return 'Stopwatch';
-  return '';
-}
-
-function parseCountText(countText) {
-  const match = String(countText || '').match(/(\d+)\s*\/\s*(\d+)/);
-  if (!match) return { completed: 0, goal: 0 };
-  return {
-    completed: parseInt(match[1], 10) || 0,
-    goal: parseInt(match[2], 10) || 0
-  };
-}
-
-function parseProgressText(progressText) {
-  const filled = (String(progressText || '').match(/█/g) || []).length;
-  const empty = (String(progressText || '').match(/░/g) || []).length;
-  const total = filled + empty;
-  if (total <= 0) return 0;
-  return Math.round((filled / total) * 100);
-}
-
 function parseControlBridgeState(controlText) {
   if (!controlText) return null;
 
@@ -1337,18 +1300,6 @@ function parseControlBridgeState(controlText) {
   } catch (error) {
     return null;
   }
-}
-
-function buildFallbackChatStatus(sessionText, timerText, countText, paused) {
-  const parts = [];
-  if (sessionText) parts.push(String(sessionText).trim());
-  if (timerText) parts.push(String(timerText).trim());
-  if (countText) parts.push(`(${String(countText).trim()})`);
-  let summary = parts.join(' ');
-  if (paused && summary && !/\bpaused\b/i.test(summary)) {
-    summary += ' [Paused]';
-  }
-  return summary || '--';
 }
 
 async function loadStateViaObsSources() {

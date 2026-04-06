@@ -164,20 +164,7 @@ test("Null returns --:--", formatTime(null) === "--:--");
 // ═══════════════════════════════════════════════════════
 // Duration Formatting (from stats dashboard)
 // ═══════════════════════════════════════════════════════
-section("Dock Fallback State Inference");
-
-function inferFallbackRunning(timerText, sessionText) {
-  const parts = String(timerText || '').trim().split(':').map(part => parseInt(part, 10));
-  const currentTime = parts.some(Number.isNaN)
-    ? null
-    : (parts.length === 2 ? (parts[0] * 60) + parts[1] : parts.length === 3 ? (parts[0] * 3600) + (parts[1] * 60) + parts[2] : null);
-  return currentTime != null && !!sessionText && !/\bready\b/i.test(sessionText);
-}
-
-test("Ready session text is treated as idle", inferFallbackRunning("25:00", "Ready") === false);
-test("Focus text is treated as running", inferFallbackRunning("25:00", "Focus Time") === true);
-test("Paused focus text is still treated as running state", inferFallbackRunning("25:00", "Focus Time (Paused)") === true);
-
+// ═══════════════════════════════════════════════════════
 section("Duration Formatting (JS)");
 
 function formatDuration(seconds) {
