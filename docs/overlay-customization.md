@@ -14,7 +14,7 @@ SessionPulse includes two overlay styles — a **circular ring** and a **horizon
 
 1. Add a **Browser Source** to your scene
 2. Check **Local file** → select `timer_overlay.html`
-3. Set Width: **220**, Height: **220**
+3. Set Width: **400**, Height: **400** (renders at high resolution; scale down in OBS for crispness)
 
 ### Themes
 
@@ -53,11 +53,12 @@ All properties are optional. Add them inside `body { }` in the Custom CSS field:
 | `--sp-time-size` | `5.4rem` | Timer text font size |
 | `--sp-time-weight` | `700` | Timer text font weight |
 | `--sp-time-stroke` | `0.5px` | Timer text outline for readability |
-| `--sp-label-size` | `1.3rem` | Session label font size |
+| `--sp-label-size` | `1.45rem` | Session label font size |
 | `--sp-stats-size` | `1rem` | Stats text font size |
 | `--sp-glass-display` | `none` | Set to `block` to show frosted glass circle |
 | `--sp-tracker-stroke` | `4` | Session tracker segment thickness |
-| `--sp-next-display` | `flex` | Set to `none` to hide the "Next" pill |
+| `--sp-next-display` | `block` | Set to `none` to hide the "Next" banner |
+| `--sp-next-size` | `0.82rem` | Next-up banner text size |
 | `--sp-backdrop-bg` | dark radial | Backdrop center color |
 | `--sp-backdrop-bg-edge` | darker radial | Backdrop edge color |
 | `--sp-backdrop-blur` | `24px` | Backdrop blur strength |
@@ -66,6 +67,18 @@ You can mix and match — for example, neon ring with glassmorphism glass:
 ```css
 body { background-color: rgba(0, 0, 0, 0); margin: 0px auto; overflow: hidden; --sp-ring-stroke: 6; --sp-ring-filter: drop-shadow(0 0 8px currentColor); --sp-glass-display: block; }
 ```
+
+### Visual Features
+
+- **Frosted glass backdrop** — dark radial-gradient circle with `backdrop-filter: blur(24px)`, readable on any stream background (light or dark)
+- **Gradient progress ring** — session-colored gradient (e.g., green→cyan for Focus) with `stroke-linecap: round` and dual drop-shadow glow
+- **Glow cap** — a bright dot that tracks the leading edge of the ring progress
+- **Session tracker** — inner segmented ring showing completed vs. goal sessions. Each segment lights up as sessions complete
+- **Next-up banner** — dark pill at the bottom showing the next session type and end time
+- **Breathing glow** — subtle 5-second scale+fade animation behind the ring when running
+- **Tick marks** — 12 subtle clock-face marks for visual reference
+- **Paused state** — timer and label pulse, glow dims
+- **Overtime** — ring pulses red, timer shows `+0:00` counting up
 
 ### Custom Colors
 
@@ -145,25 +158,25 @@ body { --sp-position: bottom; }
 ```css
 body { background-color: rgba(0,0,0,0); margin: 0px auto; overflow: hidden; --sp-ring-stroke: 6; --sp-ring-filter: drop-shadow(0 0 8px currentColor); --sp-glow-filter: blur(40px); }
 ```
-Small, glowing, unobtrusive. Set Browser Source to 150×150.
+Small, glowing, unobtrusive. Keep Browser Source at 400×400, then scale to ~150px via OBS transform.
 
 ### Study With Me
 ```css
 body { background-color: rgba(0,0,0,0); margin: 0px auto; overflow: hidden; }
 ```
-Default theme. Larger, clean, readable. Set Browser Source to 250×250.
+Default theme. Larger, clean, readable. Keep Browser Source at 400×400, scale to ~280px via OBS transform.
 
 ### Professional / Podcast
 ```css
 body { background-color: rgba(0,0,0,0); margin: 0px auto; overflow: hidden; --sp-glow-opacity: 0; --sp-ring-stroke: 4; --sp-time-weight: 300; --sp-time-size: 2.4rem; --focus-color: #6366f1; }
 ```
-Muted, branded colors, thin ring. Set Browser Source to 180×180.
+Muted, branded colors, thin ring. Keep Browser Source at 400×400, scale to ~180px via OBS transform.
 
 ### Aesthetic / Lofi
 ```css
 body { background-color: rgba(0,0,0,0); margin: 0px auto; overflow: hidden; --sp-glass-display: block; --focus-color: #f472b6; --focus-glow: rgba(244, 114, 182, 0.3); }
 ```
-Frosted glass, soft pink. Set Browser Source to 280×280.
+Frosted glass, soft pink. Keep Browser Source at 400×400, scale to ~280px via OBS transform.
 
 ### Dual Overlay (Ring + Bar)
 Add both as separate Browser Sources:

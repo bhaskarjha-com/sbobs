@@ -51,9 +51,10 @@ Common issues and their solutions, organized by category.
 
 ### Overlay is too big or too small
 
-- Change the **Width** and **Height** in Browser Source properties to match your desired size.
-- Or set `--sp-size` in the Custom CSS field: `body { --sp-size: 300; }` and update Width/Height to match.
-- You can also resize the source directly in the OBS preview by dragging the corners.
+- The overlay renders at **400×400** by default for maximum crispness.
+- In OBS, resize using **Edit Transform** (right-click the source → Transform → Edit Transform) to scale it down.
+- Alternatively, drag the source corners in the OBS preview to resize visually.
+- For a different base resolution, set `--sp-size` in Custom CSS: `body { --sp-size: 600; }` and update Browser Source Width/Height to match.
 
 ### Overlay colors are wrong
 
