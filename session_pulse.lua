@@ -2737,7 +2737,7 @@ function fit_source_to_canvas(scene, source_name)
     if not item then return end
 
     -- Get canvas dimensions (obs_video_info may not exist in test/mock environments)
-    if type(obs.obs_video_info) ~= "function" then return end
+    if not obs.obs_video_info then return end
     local ovi = obs.obs_video_info()
     if not obs.obs_get_video_info(ovi) then return end
 
