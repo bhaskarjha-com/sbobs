@@ -36,7 +36,6 @@ You should see the script appear in the scripts list. The Script Log (bottom pan
 
 ```
 [SessionPulse] Loaded v5.4.1
-[SessionPulse] State saved → session_state.json
 ```
 
 If you see errors instead, check the [FAQ](faq.md).
@@ -51,54 +50,25 @@ Click **one button** and SessionPulse creates everything for you:
 2. Done.
 
 This automatically:
-- ✅ Creates 5 text sources (`SP Timer`, `SP Session`, `SP Count`, `SP Progress`, `SP Status`)
+- ✅ Creates the **ring overlay** (`SP Overlay` — circular timer, 400×400)
+- ✅ Creates the **bar overlay** (`SP Overlay Bar` — horizontal status strip, 1920×48)
 - ✅ Creates the internal control source (`SP Control`) used by the dock and overlay controls
-- ✅ Creates a ring overlay Browser Source (`SP Overlay`)
-- ✅ Creates placeholder background sources (`SP Background Image`, `SP Background Video`, `SP Background Music`)
-- ✅ Creates an alert Media Source (`SP Alert Sound`)
-- ✅ Adds the visible sources to your currently active scene
-- ✅ Wires all sources to the script dropdowns
+- ✅ Creates background sources (`SP Background Image`, `SP Background Video`)
+- ✅ Creates a looping music source (`SP Background Music`)
+- ✅ Creates an alert sound source (`SP Alert Sound`)
+- ✅ Adds all sources to your currently active scene
+- ✅ Auto-fits background sources to your canvas (any resolution)
 
 Check the Script Log to confirm:
 ```
-[SessionPulse] Quick Setup: ✓ Complete! Created 11 items. Press Start to begin!
+[SessionPulse] Quick Setup: ✓ Complete! Created 8 items. Press Start to begin!
 ```
 
-> **Skip to [Step 4: Set Up Hotkeys](#step-4-set-up-hotkeys)** — sources, scenes, and overlay are ready.
+> **Skip to [Step 4: Set Up Hotkeys](#step-4-set-up-hotkeys)** — overlays and sources are ready.
 
 If OBS closes during a session, reopen OBS and use **Resume Previous Session** in the script panel to continue from the exact saved timer value and progress position.
 
----
-
-<details>
-<summary><strong>Alternative: Manual Setup</strong> (if you prefer to create sources yourself)</summary>
-
-### Create Text Sources
-
-Create these in your scene before configuring the script:
-
-| Source Name | Purpose | Required? |
-|------------|---------|-----------|
-| `Timer` | Shows countdown `24:59` | ✅ Yes |
-| `Session` | Shows `Focus Time`, `Short Break`, etc. | Recommended |
-| `Focus Count` | Shows `Done: 3/6` | Optional |
-| `Progress` | Shows `████░░░░` bar | Optional |
-
-1. In your **Scene**, click **+** (under Sources)
-2. Select **Text (GDI+)** (Windows) or **Text (FreeType 2)** (Mac/Linux)
-3. Name it and click **OK**
-4. Repeat for each source
-
-### Connect Sources to the Script
-
-1. Go to **Tools** → **Scripts** → select **SessionPulse**
-2. In the script settings panel, use the dropdown menus:
-   - **Timer Text Source** → select your timer source
-   - **Session Message Source** → select your session source
-   - **Focus Count Source** → select your count source
-   - **Progress Bar Source** → select your progress source
-
-</details>
+> 💡 **Need individual text sources?** Quick Setup creates overlays only (they display everything: timer, session type, progress, goals, next-up info). If you prefer separate text elements for custom positioning, see [Manual Text Sources](overlay-customization.md#manual-text-sources-advanced).
 
 ---
 
@@ -123,6 +93,7 @@ Optional but useful:
 | Add Time | `Ctrl+F9` | Add 5 minutes to current session |
 | Subtract Time | `Ctrl+F10` | Remove 5 minutes from current session |
 | Reset All | `Ctrl+F11` | Clear all progress and start fresh |
+| Resume Previous | `Ctrl+F12` | Restore a session interrupted by crash/close |
 
 4. Click **Apply** → **OK**
 
@@ -131,8 +102,8 @@ Optional but useful:
 ## Step 5: Start Your First Session
 
 1. Press your **Start/Pause** hotkey (e.g., `F9`)
-2. Watch: your `Timer` source should start counting down from `25:00`
-3. Your `Session` source should show `Focus Time`
+2. Watch: the **ring overlay** starts counting down from `25:00`
+3. The **bar overlay** at the top shows session type, timer, progress, and goal count
 4. When it hits `0:00`, it will automatically switch to a **Short Break** (5 minutes)
 5. After the break, it auto-starts the next Focus session
 
@@ -145,21 +116,22 @@ Focus (25 min) → Short Break (5 min) → Focus → Short Break → Focus → S
 
 ---
 
-## Step 6: Add the Overlay (Optional)
+## Step 6: Customize Your Overlays
 
-The ring overlay adds a beautiful visual timer to your stream:
+Both overlays are highly customizable via the **Custom CSS** field in OBS Browser Source properties.
 
-1. In your scene, click **+** (add source) → **Browser**
-2. Name it `Timer Overlay`
-3. Check **✅ Local file**
-4. Click **Browse** → navigate to your SessionPulse folder → select **`timer_overlay.html`**
-5. Set **Width: 220**, **Height: 220**
-6. Click **OK**
-7. Position the overlay where you want it on your stream
+### Ring Overlay
+- Created by Quick Setup as `SP Overlay` (400×400)
+- Scale it down in OBS to your preferred size (e.g., 150px for gaming, 280px for study streams)
+- Themes: Neon, Minimal, Glassmorphism, or default
 
-You should see a circular ring with the countdown timer. It will be green during Focus, blue during Short Break, and purple during Long Break.
+### Bar Overlay
+- Created by Quick Setup as `SP Overlay Bar` (1920×48)
+- Sits at the top edge of your canvas
+- Shows: session icon, label, timer, progress bar, goal count, next-up info
+- Auto-hides when the timer is idle
 
-> For customization (themes, colors, sizes), see the [Overlay Customization Guide](overlay-customization.md).
+> For full theme presets, CSS variables, and color customization, see the [Overlay Customization Guide](overlay-customization.md).
 
 ---
 
@@ -179,7 +151,7 @@ The dock gives you clickable buttons inside OBS instead of using hotkeys:
    
 3. Click **Apply**
 
-A new dock panel appears with Start/Pause, Skip, Stop buttons, a timer display, session stats, and the live `SP Status` / AFK message when one is active.
+A new dock panel appears with Start/Pause, Skip, Stop buttons, a timer display, session stats, and the live status message when one is active.
 
 **For control buttons to work**, you need WebSocket enabled:
 1. Go to **Tools** → **WebSocket Server Settings**
@@ -197,18 +169,18 @@ Your setup should now look like this:
 flowchart TB
     subgraph OBS["OBS Studio"]
         Script["session_pulse.lua\n(engine)"]
-        Timer["Timer: 24:59"]
-        Session["Session: Focus Time"]
-        Overlay["Ring Overlay\n(Browser Source)"]
+        Ring["SP Overlay\n(Ring — 400×400)"]
+        Bar["SP Overlay Bar\n(Bar — 1920×48)"]
+        BG["SP Background\nImage / Video"]
         Dock["Control Dock\n(Custom Browser Dock)"]
     end
     
-    Script -->|updates| Timer
-    Script -->|updates| Session
     Script -->|writes| State["session_state.json"]
-    State -->|reads| Overlay
+    State -->|reads| Ring
+    State -->|reads| Bar
     State -->|reads| Dock
     Dock -->|WebSocket| Script
+    Script -->|updates| BG
 ```
 
 ---
@@ -218,7 +190,8 @@ flowchart TB
 | Want to... | Read... |
 |-----------|---------|
 | Customize overlay colors and themes | [Overlay Customization](overlay-customization.md) |
-| Auto-switch scenes, duck music, control mic | [Automation Guide](automation-guide.md) |
+| Auto-duck music, control mic, toggle filters | [Automation Guide](automation-guide.md) |
 | Set up Nightbot or Stream Deck | [Integrations](integrations.md) |
 | Control from your phone | [Mobile Remote](mobile-remote.md) |
+| Use individual text sources instead of overlays | [Manual Text Sources](overlay-customization.md#manual-text-sources-advanced) |
 | Something isn't working | [FAQ & Troubleshooting](faq.md) |

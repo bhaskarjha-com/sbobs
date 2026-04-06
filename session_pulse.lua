@@ -2807,7 +2807,7 @@ function populate_scene(scene, overlay_source, bar_source, background_sources, m
 
     -- Add ring overlay at top-left
     if overlay_source then
-        add_source_obj_to_scene(scene, overlay_source, 30, 30)
+        add_source_obj_to_scene(scene, overlay_source, 60, 60)
     end
 
     -- Add bar overlay at top edge (full width)

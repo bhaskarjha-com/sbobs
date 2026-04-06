@@ -125,10 +125,11 @@ Quick Setup creates `SP Alert Sound` automatically, so in most cases you only ne
 
 ### How do I show an AFK / BRB / custom status message?
 
-- Use the built-in `SP Status` text source created by Quick Setup.
+- You can create an `SP Status` text source manually (see [Manual Text Sources](overlay-customization.md#manual-text-sources-advanced)), or use the overlay's built-in status display.
 - In the script panel, type your message in **Status Message** and click **Show Status**.
 - Set **Duration (minutes)** to `0` to keep it visible until cleared, or a positive number to auto-clear it.
 - Click **Clear Status** when you return.
+- The status message also appears in the dock, ring overlay, and bar overlay automatically.
 
 ### Background image or video doesn't change
 
