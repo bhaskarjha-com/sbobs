@@ -2,6 +2,28 @@
 
 All notable changes to SessionPulse are documented here.
 
+## [6.0.0] — 2026-04-06
+
+### Breaking Changes
+- **Overlay-first Quick Setup** — Quick Setup no longer auto-creates 5 text sources (`SP Timer`, `SP Session`, `SP Count`, `SP Progress`, `SP Status`). Overlays now handle all visual display. Power users can still manually create text sources — see `docs/overlay-customization.md`.
+- **Asset directory reorganized** — README screenshots moved from `assets/` to `assets/screenshots/`. Background images in `assets/backgrounds/`, alert sounds in `assets/sounds/`.
+
+### Added
+- **Default background images** — 3 AI-generated, color-matched 1920×1080 PNG backgrounds bundled in `assets/backgrounds/` (Focus: green hexagonal, Short Break: blue waves, Long Break: purple rings). Quick Setup auto-assigns them when no custom paths are configured.
+- **Default alert sounds** — 3 royalty-free MP3 alert sounds bundled in `assets/sounds/` (focus_start, short_break_start, long_break_start). Quick Setup auto-assigns them when no custom paths are configured. Sounds play when a session starts (matching the code's session_type assignment order).
+- **`SP Overlay Bar`** — bar overlay is now auto-created by Quick Setup alongside the ring overlay.
+- **One-click complete stream setup** — Quick Setup now configures everything needed for a fully functional stream layout in a single click: overlays, backgrounds, alert sounds, music source, and infrastructure.
+
+### Changed
+- **Bar overlay progress bar** — removed `max-width: 40%` cap; progress bar now fills all available space between timer and right-side info. Eliminates the large empty gap.
+- **Bar overlay typography** — session counter bumped to `0.95rem` with primary text color; next-info bumped to `0.92rem`. Both are now more readable.
+- **Bar overlay divider** — increased height (16px → 20px), opacity (0.15 → 0.3), and width (1px → 1.5px) for better visual separation.
+- **Asset organization** — `assets/` now has 3 subdirectories: `backgrounds/`, `screenshots/`, `sounds/`.
+
+### Fixed
+- **Lua test failures** — removed 5 stale assertions checking for auto-created text sources; added bar overlay placement test. Added `obs_video_info` nil guard in `fit_source_to_canvas` for test environments.
+- **Test counts** — Lua runtime queue: 79 → 75 (removed stale, added new); JS frontend: 104 (unchanged).
+
 ## [5.4.1] — 2026-04-02
 
 ### Fixed

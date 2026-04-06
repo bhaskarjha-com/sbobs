@@ -120,7 +120,7 @@ shared.js                  ← ES module utilities for custom integrations
 
 ```json
 {
-  "version": "5.4.1",
+  "version": "6.0.0",
   "timer_mode": "pomodoro",
   "is_running": true,
   "is_paused": false,
@@ -174,7 +174,7 @@ shared.js                  ← ES module utilities for custom integrations
 # Lua core tests (72 tests)
 lua tests/test_session_pulse.lua
 
-# Lua runtime queue tests (79 tests)
+# Lua runtime queue tests (75 tests)
 lua tests/test_runtime_queue.lua
 
 # JavaScript frontend tests (104 tests)
@@ -195,7 +195,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines, architecture overview, an
 
 See [CHANGELOG.md](CHANGELOG.md) for the full version history.
 
-**Current version:** 5.4.1
+**Current version:** 6.0.0
 
 ---
 

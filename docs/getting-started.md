@@ -35,7 +35,7 @@ git clone https://github.com/bhaskarjha-com/sbobs.git
 You should see the script appear in the scripts list. The Script Log (bottom panel) should show:
 
 ```
-[SessionPulse] Loaded v5.4.1
+[SessionPulse] Loaded v6.0.0
 ```
 
 If you see errors instead, check the [FAQ](faq.md).
