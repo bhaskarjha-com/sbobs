@@ -25,10 +25,11 @@
     --overtime-glow: rgba(239, 68, 68, 0.4);
     --overtime-gradient-end: #f97316;
     --idle-color: #475569;
-    --ring-bg: rgba(255, 255, 255, 0.035);
+    --ring-bg: rgba(255, 255, 255, 0.04);
+    --tracker-bg: rgba(255, 255, 255, 0.06);
     --text-primary: #f1f5f9;
-    --text-secondary: rgba(241, 245, 249, 0.6);
-    --text-muted: rgba(241, 245, 249, 0.38);
+    --text-secondary: rgba(241, 245, 249, 0.65);
+    --text-muted: rgba(241, 245, 249, 0.4);
     --size: 400px;
     --stroke: 14;
   }
@@ -57,35 +58,35 @@
     transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.5s ease;
   }
 
-  /* ── Frosted glass backdrop ── */
+  /* ── Frosted glass backdrop — dark enough for ANY background ── */
   .backdrop {
     position: absolute;
     inset: 5%;
     border-radius: 50%;
     background: radial-gradient(
       ellipse at 48% 42%,
-      var(--sp-backdrop-bg, rgba(18, 24, 38, 0.52)),
-      var(--sp-backdrop-bg-edge, rgba(6, 10, 22, 0.68))
+      var(--sp-backdrop-bg, rgba(12, 16, 28, 0.78)),
+      var(--sp-backdrop-bg-edge, rgba(4, 8, 18, 0.92))
     );
-    backdrop-filter: blur(var(--sp-backdrop-blur, 20px));
-    -webkit-backdrop-filter: blur(var(--sp-backdrop-blur, 20px));
+    backdrop-filter: blur(var(--sp-backdrop-blur, 24px));
+    -webkit-backdrop-filter: blur(var(--sp-backdrop-blur, 24px));
     border: 1px solid var(--sp-backdrop-border, rgba(255, 255, 255, 0.06));
     box-shadow:
-      0 8px 40px rgba(0, 0, 0, 0.35),
+      0 8px 40px rgba(0, 0, 0, 0.45),
       inset 0 1px 0 rgba(255, 255, 255, 0.03),
-      inset 0 -2px 8px rgba(0, 0, 0, 0.15);
+      inset 0 -2px 10px rgba(0, 0, 0, 0.2);
     transition: border-color 1s ease, box-shadow 1s ease;
   }
 
-  /* ── Glow ── */
+  /* ── Center glow ── */
   .glow {
     position: absolute;
-    width: 55%;
-    height: 55%;
+    width: 50%;
+    height: 50%;
     border-radius: 50%;
     filter: var(--sp-glow-filter, blur(40px));
     opacity: 0;
-    transition: opacity 1.2s ease, background 0.8s ease, transform 0.8s ease;
+    transition: opacity 1.2s ease, background 0.8s ease;
   }
   .glow.active {
     opacity: var(--sp-glow-opacity, 1);
@@ -94,10 +95,10 @@
 
   @keyframes breathe {
     0%, 100% { transform: scale(1); opacity: var(--sp-glow-opacity, 1); }
-    50% { transform: scale(1.12); opacity: calc(var(--sp-glow-opacity, 1) * 0.55); }
+    50% { transform: scale(1.15); opacity: calc(var(--sp-glow-opacity, 1) * 0.5); }
   }
 
-  /* ── Outer ring halo (session-colored edge glow) ── */
+  /* ── Ring halo (outer session glow) ── */
   .ring-halo {
     position: absolute;
     inset: 0;
@@ -105,9 +106,7 @@
     opacity: 0;
     transition: opacity 0.8s ease, box-shadow 1s ease;
   }
-  .ring-halo.active {
-    opacity: 1;
-  }
+  .ring-halo.active { opacity: 1; }
 
   /* ── Ring SVG ── */
   .ring-svg {
@@ -129,20 +128,28 @@
     stroke-width: var(--sp-ring-stroke, var(--stroke));
     stroke-linecap: round;
     transition: stroke-dashoffset 0.8s cubic-bezier(0.4, 0, 0.2, 1);
-    filter: var(--sp-ring-filter, drop-shadow(0 0 6px currentColor));
+    filter: var(--sp-ring-filter, drop-shadow(0 0 8px currentColor) drop-shadow(0 0 2px currentColor));
   }
 
-  /* Glow dot at leading edge */
+  /* Ring glow cap */
   .ring-cap {
-    filter: blur(4px);
+    filter: blur(3px);
     opacity: 0;
     transition: opacity 0.6s ease;
   }
   .ring-cap.active { opacity: 1; }
 
+  /* ── Session tracker (inner segmented ring) ── */
+  .tracker-segment {
+    fill: none;
+    stroke-width: var(--sp-tracker-stroke, 4);
+    stroke-linecap: round;
+    transition: stroke 0.4s ease, opacity 0.4s ease;
+  }
+
   /* ── Tick marks ── */
   .tick {
-    stroke: rgba(255, 255, 255, 0.05);
+    stroke: rgba(255, 255, 255, 0.04);
     stroke-width: 1.2;
     stroke-linecap: round;
   }
@@ -155,82 +162,99 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 1px;
-    padding-top: 2px;
+    gap: 0;
   }
 
   .time {
-    font-size: var(--sp-time-size, 4.8rem);
+    font-size: var(--sp-time-size, 5.4rem);
     font-weight: var(--sp-time-weight, 700);
     color: var(--text-primary);
     letter-spacing: -2px;
     line-height: 1;
     font-variant-numeric: tabular-nums;
-    text-shadow: 0 2px 20px rgba(0, 0, 0, 0.5);
+    text-shadow: 0 2px 20px rgba(0, 0, 0, 0.6);
+    -webkit-text-stroke: var(--sp-time-stroke, 0.5px) rgba(255, 255, 255, 0.1);
+    paint-order: stroke fill;
     transition: color 0.4s ease, text-shadow 0.6s ease;
   }
 
   .time.overtime {
     color: var(--overtime-color);
-    text-shadow: 0 0 28px rgba(239, 68, 68, 0.5), 0 2px 20px rgba(0, 0, 0, 0.5);
+    text-shadow: 0 0 30px rgba(239, 68, 68, 0.5), 0 2px 20px rgba(0, 0, 0, 0.5);
   }
 
   .session-label {
-    font-size: 1.1rem;
-    font-weight: 600;
+    font-size: var(--sp-label-size, 1.3rem);
+    font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 5px;
     color: var(--text-secondary);
     transition: color 0.6s ease, text-shadow 0.6s ease;
-    text-shadow: 0 1px 8px rgba(0, 0, 0, 0.4);
-    margin-top: 4px;
+    text-shadow: 0 1px 8px rgba(0, 0, 0, 0.5);
+    margin-top: 6px;
   }
 
   .stats {
-    font-size: 0.95rem;
+    font-size: var(--sp-stats-size, 1rem);
     font-weight: 500;
     color: var(--text-muted);
-    margin-top: 8px;
-    text-shadow: 0 1px 6px rgba(0, 0, 0, 0.3);
+    margin-top: 6px;
+    text-shadow: 0 1px 6px rgba(0, 0, 0, 0.4);
     letter-spacing: 0.5px;
   }
 
-  .next-up {
-    font-size: 0.78rem;
-    font-weight: 400;
-    color: var(--text-muted);
-    margin-top: 2px;
-    text-shadow: 0 1px 6px rgba(0, 0, 0, 0.3);
-    letter-spacing: 0.3px;
-  }
-
-  .info-line {
-    max-width: 250px;
-    font-size: 0.82rem;
-    font-weight: 500;
-    color: var(--text-secondary);
-    opacity: 0.85;
-    margin-top: 4px;
-    text-align: center;
-    text-shadow: 0 1px 6px rgba(0, 0, 0, 0.35);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .transition-msg {
+  /* ── Next-up pill (positioned at bottom of ring) ── */
+  .next-pill {
+    display: var(--sp-next-display, flex);
     position: absolute;
-    bottom: 15%;
+    bottom: 13%;
     left: 50%;
     transform: translateX(-50%);
     z-index: 3;
+    font-size: 0.72rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    background: rgba(0, 0, 0, 0.45);
+    padding: 3px 12px;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+    letter-spacing: 0.3px;
+    opacity: 0;
+    transition: opacity 0.4s ease, background 0.3s ease;
+  }
+  .next-pill.visible { opacity: 1; }
+
+  .info-line {
+    max-width: 240px;
+    font-size: 0.82rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+    opacity: 0;
+    margin-top: 4px;
+    text-align: center;
+    text-shadow: 0 1px 6px rgba(0, 0, 0, 0.4);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    transition: opacity 0.3s ease;
+  }
+  .info-line.visible { opacity: 0.85; }
+
+  .transition-msg {
+    position: absolute;
+    bottom: 20%;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 4;
     font-size: 1rem;
     font-weight: 600;
     color: var(--text-primary);
     white-space: nowrap;
     opacity: 0;
     transition: opacity 0.4s ease;
-    text-shadow: 0 1px 12px rgba(0, 0, 0, 0.6);
+    text-shadow: 0 1px 12px rgba(0, 0, 0, 0.7);
     letter-spacing: 0.5px;
   }
   .transition-msg.visible { opacity: 1; }
@@ -238,23 +262,23 @@
   /* ── State animations ── */
   @keyframes pulse-pause {
     0%, 100% { opacity: 1; }
-    50% { opacity: 0.25; }
+    50% { opacity: 0.2; }
   }
   .paused .time { animation: pulse-pause 2.2s ease-in-out infinite; }
   .paused .session-label { animation: pulse-pause 2.2s ease-in-out infinite; }
-  .paused .glow { opacity: 0.15 !important; animation: none; }
-  .paused .ring-cap { opacity: 0.3 !important; }
+  .paused .glow { opacity: 0.1 !important; animation: none; }
+  .paused .ring-cap { opacity: 0.2 !important; }
 
   @keyframes pulse-overtime {
     0%, 100% { opacity: 1; transform: scale(1); }
-    50% { opacity: 0.5; transform: scale(0.98); }
+    50% { opacity: 0.45; transform: scale(0.98); }
   }
   .overtime .ring-svg { animation: pulse-overtime 1.5s ease-in-out infinite; }
 
-  .idle { opacity: 0.55; transform: scale(0.97); }
-  .idle .time { opacity: 0.45; }
-  .idle .session-label { opacity: 0.35; }
-  .idle .backdrop { opacity: 0.65; }
+  .idle { opacity: 0.5; transform: scale(0.96); }
+  .idle .time { opacity: 0.4; }
+  .idle .session-label { opacity: 0.3; }
+  .idle .backdrop { opacity: 0.6; }
   .idle .ring-halo { opacity: 0 !important; }
 
   /* ── Glassmorphism option ── */
@@ -270,13 +294,10 @@
     z-index: 1;
   }
 
-  /* ── Theme presets (JS class fallback for non-OBS browsers) ── */
-  body.theme-neon { --sp-ring-filter: drop-shadow(0 0 12px currentColor); --sp-glow-filter: blur(50px); --stroke: 12; }
-  body.theme-minimal { --sp-glow-opacity: 0; --sp-ring-stroke: 6; --sp-time-weight: 300; --sp-backdrop-bg: rgba(8, 12, 24, 0.35); --sp-backdrop-bg-edge: rgba(6, 10, 22, 0.5); --sp-ring-filter: none; }
+  /* ── Theme presets ── */
+  body.theme-neon { --sp-ring-filter: drop-shadow(0 0 14px currentColor) drop-shadow(0 0 4px currentColor); --sp-glow-filter: blur(50px); --stroke: 12; }
+  body.theme-minimal { --sp-glow-opacity: 0; --sp-ring-stroke: 6; --sp-time-weight: 300; --sp-backdrop-bg: rgba(8, 12, 24, 0.5); --sp-backdrop-bg-edge: rgba(6, 10, 22, 0.65); --sp-ring-filter: none; --sp-tracker-stroke: 2; }
   body.theme-glassmorphism { --sp-glass-display: block; }
-
-  /* ── No-backdrop option ── */
-  body.no-backdrop .backdrop { display: none; }
 </style>
 </head>
 <body>
@@ -293,46 +314,49 @@
         <stop offset="100%" id="gradStop2" stop-color="var(--focus-gradient-end)" />
       </linearGradient>
       <radialGradient id="capGlow" cx="50%" cy="50%" r="50%">
-        <stop offset="0%" id="capGlowColor" stop-color="#22c55e" stop-opacity="0.9" />
+        <stop offset="0%" id="capGlowColor" stop-color="#22c55e" stop-opacity="1" />
         <stop offset="100%" stop-color="transparent" stop-opacity="0" />
       </radialGradient>
     </defs>
 
-    <!-- 12 clock tick marks -->
+    <!-- 12 tick marks -->
     <g class="ticks">
-      <line class="tick" x1="110" y1="12" x2="110" y2="19" />
-      <line class="tick" x1="110" y1="12" x2="110" y2="19" transform="rotate(30 110 110)" />
-      <line class="tick" x1="110" y1="12" x2="110" y2="19" transform="rotate(60 110 110)" />
-      <line class="tick" x1="110" y1="12" x2="110" y2="19" transform="rotate(90 110 110)" />
-      <line class="tick" x1="110" y1="12" x2="110" y2="19" transform="rotate(120 110 110)" />
-      <line class="tick" x1="110" y1="12" x2="110" y2="19" transform="rotate(150 110 110)" />
-      <line class="tick" x1="110" y1="12" x2="110" y2="19" transform="rotate(180 110 110)" />
-      <line class="tick" x1="110" y1="12" x2="110" y2="19" transform="rotate(210 110 110)" />
-      <line class="tick" x1="110" y1="12" x2="110" y2="19" transform="rotate(240 110 110)" />
-      <line class="tick" x1="110" y1="12" x2="110" y2="19" transform="rotate(270 110 110)" />
-      <line class="tick" x1="110" y1="12" x2="110" y2="19" transform="rotate(300 110 110)" />
-      <line class="tick" x1="110" y1="12" x2="110" y2="19" transform="rotate(330 110 110)" />
+      <line class="tick" x1="110" y1="12" x2="110" y2="18" />
+      <line class="tick" x1="110" y1="12" x2="110" y2="18" transform="rotate(30 110 110)" />
+      <line class="tick" x1="110" y1="12" x2="110" y2="18" transform="rotate(60 110 110)" />
+      <line class="tick" x1="110" y1="12" x2="110" y2="18" transform="rotate(90 110 110)" />
+      <line class="tick" x1="110" y1="12" x2="110" y2="18" transform="rotate(120 110 110)" />
+      <line class="tick" x1="110" y1="12" x2="110" y2="18" transform="rotate(150 110 110)" />
+      <line class="tick" x1="110" y1="12" x2="110" y2="18" transform="rotate(180 110 110)" />
+      <line class="tick" x1="110" y1="12" x2="110" y2="18" transform="rotate(210 110 110)" />
+      <line class="tick" x1="110" y1="12" x2="110" y2="18" transform="rotate(240 110 110)" />
+      <line class="tick" x1="110" y1="12" x2="110" y2="18" transform="rotate(270 110 110)" />
+      <line class="tick" x1="110" y1="12" x2="110" y2="18" transform="rotate(300 110 110)" />
+      <line class="tick" x1="110" y1="12" x2="110" y2="18" transform="rotate(330 110 110)" />
     </g>
+
+    <!-- Session completion tracker (inner segmented ring) -->
+    <g id="trackerGroup" transform="rotate(-90 110 110)"></g>
 
     <circle class="ring-bg" cx="110" cy="110" r="100"></circle>
     <circle class="ring-progress" id="ring" cx="110" cy="110" r="100"></circle>
 
-    <!-- Bright glow dot at ring leading edge -->
-    <circle class="ring-cap" id="ringCap" cx="110" cy="10" r="10" fill="url(#capGlow)" />
+    <!-- Glow cap at ring leading edge -->
+    <circle class="ring-cap" id="ringCap" cx="110" cy="10" r="12" fill="url(#capGlow)" />
   </svg>
 
   <div class="center">
     <div class="time" id="time">--:--</div>
     <div class="session-label" id="label">Ready</div>
     <div class="stats" id="stats"></div>
-    <div class="next-up" id="nextUp"></div>
     <div class="info-line" id="infoLine"></div>
   </div>
+
+  <div class="next-pill" id="nextUp"></div>
   <div class="transition-msg" id="transition"></div>
 </div>
 
 <script>
-// ── Configuration ──
 const params = new URLSearchParams(window.location.search);
 const SHOW_STATS = params.get('showStats') !== 'false';
 const SHOW_NEXT = params.get('showNext') !== 'false';
@@ -341,43 +365,30 @@ const SHOW_STATUS = params.get('showStatus') !== 'false';
 const CUSTOM_FONT = params.get('font');
 
 let _spThemeApplied = false;
-
 function applySPConfig() {
   const style = getComputedStyle(document.body);
   const cssTheme = style.getPropertyValue('--sp-theme').trim();
   const cssSize = parseInt(style.getPropertyValue('--sp-size')) || 0;
   const theme = cssTheme || params.get('theme') || 'default';
   const size = cssSize || parseInt(params.get('size')) || 400;
-
-  if (theme !== 'default') {
-    document.body.classList.add('theme-' + theme);
-    _spThemeApplied = true;
-  }
-
+  if (theme !== 'default') { document.body.classList.add('theme-' + theme); _spThemeApplied = true; }
   if (size !== 400) {
     document.documentElement.style.setProperty('--size', size + 'px');
     document.body.style.width = size + 'px';
     document.body.style.height = size + 'px';
   }
-
   return cssTheme !== '';
 }
-
 applySPConfig();
-
 (function waitForOBSCustomCSS() {
   let attempts = 0;
   const timer = setInterval(() => {
     attempts++;
-    if (applySPConfig() || _spThemeApplied || attempts >= 20) {
-      clearInterval(timer);
-    }
+    if (applySPConfig() || _spThemeApplied || attempts >= 20) clearInterval(timer);
   }, 50);
 })();
 
-if (CUSTOM_FONT) {
-  document.body.style.fontFamily = `'${CUSTOM_FONT}', 'Segoe UI Variable', 'Segoe UI', 'Inter', sans-serif`;
-}
+if (CUSTOM_FONT) document.body.style.fontFamily = `'${CUSTOM_FONT}', 'Segoe UI Variable', 'Segoe UI', 'Inter', sans-serif`;
 
 ['focus', 'short_break', 'long_break', 'stopwatch', 'countdown'].forEach(key => {
   const color = params.get('color_' + key);
@@ -392,6 +403,8 @@ const CIRCUMFERENCE = 2 * Math.PI * 100;
 const RING_RADIUS = 100;
 const RING_CX = 110;
 const RING_CY = 110;
+const TRACKER_RADIUS = 83;
+const SVG_NS = 'http://www.w3.org/2000/svg';
 
 const ring = document.getElementById('ring');
 const ringCap = document.getElementById('ringCap');
@@ -400,6 +413,7 @@ const backdrop = document.getElementById('backdrop');
 const gradStop1 = document.getElementById('gradStop1');
 const gradStop2 = document.getElementById('gradStop2');
 const capGlowColor = document.getElementById('capGlowColor');
+const trackerGroup = document.getElementById('trackerGroup');
 const timeEl = document.getElementById('time');
 const labelEl = document.getElementById('label');
 const statsEl = document.getElementById('stats');
@@ -412,15 +426,14 @@ const container = document.getElementById('container');
 ring.style.strokeDasharray = CIRCUMFERENCE;
 ring.style.strokeDashoffset = CIRCUMFERENCE;
 
-// Raw hex values for JS-driven effects (backdrop tint, ring cap, halo)
 const RAW_COLORS = {
-  'Focus':       { hex: '#22c55e', glow: 'rgba(34,197,94,0.3)',   gradEnd: '#06b6d4' },
-  'Short Break': { hex: '#3b82f6', glow: 'rgba(59,130,246,0.3)',  gradEnd: '#818cf8' },
-  'Long Break':  { hex: '#a855f7', glow: 'rgba(168,85,247,0.3)',  gradEnd: '#ec4899' },
-  'Stopwatch':   { hex: '#f59e0b', glow: 'rgba(245,158,11,0.3)',  gradEnd: '#f97316' },
-  'Countdown':   { hex: '#f97316', glow: 'rgba(249,115,22,0.3)',  gradEnd: '#ef4444' },
+  'Focus':       { hex: '#22c55e', glow: 'rgba(34,197,94,0.3)',   gradEnd: '#06b6d4', dim: 'rgba(34,197,94,0.25)' },
+  'Short Break': { hex: '#3b82f6', glow: 'rgba(59,130,246,0.3)',  gradEnd: '#818cf8', dim: 'rgba(59,130,246,0.25)' },
+  'Long Break':  { hex: '#a855f7', glow: 'rgba(168,85,247,0.3)',  gradEnd: '#ec4899', dim: 'rgba(168,85,247,0.25)' },
+  'Stopwatch':   { hex: '#f59e0b', glow: 'rgba(245,158,11,0.3)',  gradEnd: '#f97316', dim: 'rgba(245,158,11,0.25)' },
+  'Countdown':   { hex: '#f97316', glow: 'rgba(249,115,22,0.3)',  gradEnd: '#ef4444', dim: 'rgba(249,115,22,0.25)' },
 };
-const RAW_OVERTIME = { hex: '#ef4444', glow: 'rgba(239,68,68,0.4)', gradEnd: '#f97316' };
+const RAW_OVERTIME = { hex: '#ef4444', glow: 'rgba(239,68,68,0.4)', gradEnd: '#f97316', dim: 'rgba(239,68,68,0.25)' };
 
 const COLORS = {
   'Focus':       { color: 'var(--focus-color)',       glow: 'var(--focus-glow)',       grad: ['var(--focus-color)', 'var(--focus-gradient-end)'] },
@@ -433,6 +446,7 @@ const OVERTIME_PALETTE = { color: 'var(--overtime-color)', glow: 'var(--overtime
 
 let lastState = null;
 let consecutiveFetchFailures = 0;
+let lastTrackerKey = '';
 
 function formatTime(seconds) {
   if (seconds < 0) seconds = 0;
@@ -449,6 +463,45 @@ function formatDuration(seconds) {
   const h = Math.floor(mins / 60);
   const rm = mins % 60;
   return rm === 0 ? `${h}h` : `${h}h ${rm}m`;
+}
+
+function buildTracker(completed, total, colorHex, dimColor) {
+  const key = `${completed}-${total}-${colorHex}`;
+  if (key === lastTrackerKey) return;
+  lastTrackerKey = key;
+
+  while (trackerGroup.firstChild) trackerGroup.removeChild(trackerGroup.firstChild);
+
+  if (total <= 0 || total > 30) return;
+
+  const circ = 2 * Math.PI * TRACKER_RADIUS;
+  const gapAngle = total <= 4 ? 8 : total <= 8 ? 5 : 3;
+  const gap = (gapAngle / 360) * circ;
+  const segLen = (circ - gap * total) / total;
+
+  if (segLen < 2) return;
+
+  for (let i = 0; i < total; i++) {
+    const seg = document.createElementNS(SVG_NS, 'circle');
+    seg.setAttribute('cx', RING_CX);
+    seg.setAttribute('cy', RING_CY);
+    seg.setAttribute('r', TRACKER_RADIUS);
+    seg.classList.add('tracker-segment');
+
+    seg.style.strokeDasharray = `${segLen} ${circ - segLen}`;
+    seg.style.strokeDashoffset = `${-(i * (segLen + gap))}`;
+
+    if (i < completed) {
+      seg.setAttribute('stroke', colorHex);
+      seg.style.opacity = '0.55';
+      seg.style.filter = `drop-shadow(0 0 2px ${dimColor})`;
+    } else {
+      seg.setAttribute('stroke', 'rgba(255,255,255,0.06)');
+      seg.style.opacity = '1';
+    }
+
+    trackerGroup.appendChild(seg);
+  }
 }
 
 function updateRingCap(progress, isActive) {
@@ -472,14 +525,18 @@ function update(state) {
     labelEl.textContent = 'Offline';
     statsEl.textContent = '';
     nextUpEl.textContent = '';
+    nextUpEl.classList.remove('visible');
     infoLineEl.textContent = '';
+    infoLineEl.classList.remove('visible');
     ring.style.strokeDashoffset = CIRCUMFERENCE;
     glowEl.classList.remove('active');
     ringHalo.classList.remove('active');
     updateRingCap(0, false);
+    lastTrackerKey = '';
+    while (trackerGroup.firstChild) trackerGroup.removeChild(trackerGroup.firstChild);
     backdrop.style.borderColor = 'rgba(255,255,255,0.06)';
-    backdrop.style.boxShadow = '0 8px 40px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.03), inset 0 -2px 8px rgba(0,0,0,0.15)';
-    timeEl.style.textShadow = '0 2px 20px rgba(0,0,0,0.5)';
+    backdrop.style.boxShadow = '0 8px 40px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.03), inset 0 -2px 10px rgba(0,0,0,0.2)';
+    timeEl.style.textShadow = '0 2px 20px rgba(0,0,0,0.6)';
     return;
   }
 
@@ -494,14 +551,14 @@ function update(state) {
   const mode = timer_mode || 'pomodoro';
   const overtime = is_overtime || false;
 
-  // Container state classes
+  // Container state
   let cls = 'timer-container';
   if (!is_running) cls += ' idle';
   else if (is_paused) cls += ' paused';
   if (overtime) cls += ' overtime';
   container.className = cls;
 
-  // Time display
+  // Time
   if (overtime) {
     timeEl.textContent = '+' + formatTime(overtime_seconds || 0);
     timeEl.classList.add('overtime');
@@ -531,76 +588,70 @@ function update(state) {
   }
   ring.style.strokeDashoffset = CIRCUMFERENCE * (1 - Math.max(0, Math.min(1, progress)));
 
-  // Colors & gradient
+  // Colors
   let palette, raw;
-  if (overtime) {
-    palette = OVERTIME_PALETTE;
-    raw = RAW_OVERTIME;
-  } else if (mode === 'stopwatch') {
-    palette = COLORS['Stopwatch'];
-    raw = RAW_COLORS['Stopwatch'];
-  } else if (mode === 'countdown') {
-    palette = COLORS['Countdown'];
-    raw = RAW_COLORS['Countdown'];
-  } else {
-    palette = COLORS[session_type] || COLORS['Focus'];
-    raw = RAW_COLORS[session_type] || RAW_COLORS['Focus'];
-  }
+  if (overtime) { palette = OVERTIME_PALETTE; raw = RAW_OVERTIME; }
+  else if (mode === 'stopwatch') { palette = COLORS['Stopwatch']; raw = RAW_COLORS['Stopwatch']; }
+  else if (mode === 'countdown') { palette = COLORS['Countdown']; raw = RAW_COLORS['Countdown']; }
+  else { palette = COLORS[session_type] || COLORS['Focus']; raw = RAW_COLORS[session_type] || RAW_COLORS['Focus']; }
 
   ring.style.stroke = is_running ? 'url(#ringGradient)' : 'var(--idle-color)';
   gradStop1.setAttribute('stop-color', palette.grad[0]);
   gradStop2.setAttribute('stop-color', palette.grad[1]);
-
-  // Ring cap color
   capGlowColor.setAttribute('stop-color', raw.hex);
-  ringCap.style.fill = `url(#capGlow)`;
-
-  // Session label styling
   labelEl.style.color = is_running ? palette.color : 'var(--text-secondary)';
+
   if (is_running) {
-    labelEl.style.textShadow = `0 0 16px ${raw.glow}, 0 1px 8px rgba(0,0,0,0.4)`;
+    labelEl.style.textShadow = `0 0 18px ${raw.glow}, 0 1px 8px rgba(0,0,0,0.5)`;
   } else {
-    labelEl.style.textShadow = '0 1px 8px rgba(0,0,0,0.4)';
+    labelEl.style.textShadow = '0 1px 8px rgba(0,0,0,0.5)';
   }
 
-  // Timer text gets a faint session-color glow when running
+  // Timer text glow
   if (is_running && !overtime) {
-    timeEl.style.textShadow = `0 0 30px ${raw.glow}, 0 2px 20px rgba(0,0,0,0.5)`;
+    timeEl.style.textShadow = `0 0 35px ${raw.glow}, 0 2px 20px rgba(0,0,0,0.6)`;
   } else if (!overtime) {
-    timeEl.style.textShadow = '0 2px 20px rgba(0,0,0,0.5)';
+    timeEl.style.textShadow = '0 2px 20px rgba(0,0,0,0.6)';
   }
 
-  // Backdrop border gets a faint session tint when running
+  // Backdrop tint
+  const r = parseInt(raw.hex.slice(1,3), 16);
+  const g = parseInt(raw.hex.slice(3,5), 16);
+  const b = parseInt(raw.hex.slice(5,7), 16);
   if (is_running && !is_paused) {
-    backdrop.style.borderColor = raw.hex.replace(')', ',0.12)').replace('#', 'rgba(') || 'rgba(255,255,255,0.06)';
-    // Convert hex to rgba for border
-    const r = parseInt(raw.hex.slice(1,3), 16);
-    const g = parseInt(raw.hex.slice(3,5), 16);
-    const b = parseInt(raw.hex.slice(5,7), 16);
-    backdrop.style.borderColor = `rgba(${r},${g},${b},0.12)`;
-    backdrop.style.boxShadow = `0 8px 40px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.03), inset 0 -2px 8px rgba(0,0,0,0.15), 0 0 40px rgba(${r},${g},${b},0.06)`;
+    backdrop.style.borderColor = `rgba(${r},${g},${b},0.15)`;
+    backdrop.style.boxShadow = `0 8px 40px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.03), inset 0 -2px 10px rgba(0,0,0,0.2), 0 0 50px rgba(${r},${g},${b},0.08)`;
   } else {
     backdrop.style.borderColor = 'rgba(255,255,255,0.06)';
-    backdrop.style.boxShadow = '0 8px 40px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.03), inset 0 -2px 8px rgba(0,0,0,0.15)';
+    backdrop.style.boxShadow = '0 8px 40px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.03), inset 0 -2px 10px rgba(0,0,0,0.2)';
   }
 
   // Glow
   glowEl.style.background = palette.glow;
   glowEl.classList.toggle('active', is_running && !is_paused);
 
-  // Ring halo (outer session-colored glow around backdrop)
+  // Ring halo
   if (is_running && !is_paused) {
-    const r = parseInt(raw.hex.slice(1,3), 16);
-    const g = parseInt(raw.hex.slice(3,5), 16);
-    const b = parseInt(raw.hex.slice(5,7), 16);
-    ringHalo.style.boxShadow = `inset 0 0 30px rgba(${r},${g},${b},0.04), 0 0 50px rgba(${r},${g},${b},0.08)`;
+    ringHalo.style.boxShadow = `inset 0 0 30px rgba(${r},${g},${b},0.05), 0 0 60px rgba(${r},${g},${b},0.1)`;
     ringHalo.classList.add('active');
   } else {
     ringHalo.classList.remove('active');
   }
 
-  // Glow cap
+  // Ring cap
   updateRingCap(progress, is_running && !is_paused);
+
+  // Session tracker (inner segmented ring)
+  if (mode === 'pomodoro' && goal_sessions > 0) {
+    buildTracker(completed_focus_sessions || 0, goal_sessions, raw.hex, raw.dim);
+  } else if (mode === 'custom' && custom_segment_count > 0) {
+    buildTracker(custom_segment_index ? custom_segment_index - 1 : 0, custom_segment_count, raw.hex, raw.dim);
+  } else {
+    if (lastTrackerKey !== '') {
+      lastTrackerKey = '';
+      while (trackerGroup.firstChild) trackerGroup.removeChild(trackerGroup.firstChild);
+    }
+  }
 
   // Stats
   if (!SHOW_STATS) {
@@ -617,25 +668,33 @@ function update(state) {
     statsEl.textContent = '';
   }
 
-  // Next up indicator
+  // Next-up pill
   if (SHOW_NEXT && is_running && !overtime) {
     let nextText = '';
     if (next_session_type) nextText = `Next: ${next_session_type}`;
-    if (ends_at) nextText += nextText ? ` · Ends ${ends_at}` : `Ends at ${ends_at}`;
-    nextUpEl.textContent = nextText;
+    if (ends_at) nextText += nextText ? ` · ${ends_at}` : `Ends ${ends_at}`;
+    if (nextText) {
+      nextUpEl.textContent = nextText;
+      nextUpEl.classList.add('visible');
+    } else {
+      nextUpEl.classList.remove('visible');
+    }
   } else {
-    nextUpEl.textContent = '';
+    nextUpEl.classList.remove('visible');
   }
 
+  // Info line (status/chat)
   if (SHOW_STATUS && status_active && status_message) {
     infoLineEl.textContent = status_message;
+    infoLineEl.classList.add('visible');
   } else if (SHOW_CHAT && chat_status_line) {
     infoLineEl.textContent = chat_status_line;
+    infoLineEl.classList.add('visible');
   } else {
-    infoLineEl.textContent = '';
+    infoLineEl.classList.remove('visible');
   }
 
-  // Transition message
+  // Transition
   if (show_transition && transition_message) {
     transEl.textContent = transition_message;
     transEl.classList.add('visible');
@@ -656,26 +715,16 @@ async function poll() {
       update(state);
     } else {
       consecutiveFetchFailures += 1;
-      if (consecutiveFetchFailures >= 2) {
-        lastState = null;
-        update(null);
-      } else {
-        update(lastState);
-      }
+      if (consecutiveFetchFailures >= 2) { lastState = null; update(null); }
+      else update(lastState);
     }
   } catch (e) {
     consecutiveFetchFailures += 1;
-    if (consecutiveFetchFailures >= 2) {
-      lastState = null;
-      update(null);
-    } else {
-      update(lastState);
-    }
+    if (consecutiveFetchFailures >= 2) { lastState = null; update(null); }
+    else update(lastState);
   } finally {
     pollInFlight = false;
-    if (!pollStopped) {
-      pollTimer = setTimeout(poll, POLL_INTERVAL);
-    }
+    if (!pollStopped) pollTimer = setTimeout(poll, POLL_INTERVAL);
   }
 }
 
