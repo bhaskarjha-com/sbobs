@@ -203,28 +203,19 @@
     letter-spacing: 0.5px;
   }
 
-  /* ── Next-up banner (bottom pill) ── */
-  .next-banner {
-    display: var(--sp-next-display, block);
-    position: absolute;
-    bottom: 14%;
-    left: 50%;
-    transform: translateX(-50%);
-    z-index: 3;
+  /* ── Next-up line (inside center content) ── */
+  .next-line {
     font-size: var(--sp-next-size, 0.82rem);
     font-weight: 500;
-    color: var(--text-secondary);
-    white-space: nowrap;
-    background: rgba(0, 0, 0, 0.5);
-    padding: 4px 16px;
-    border-radius: 14px;
-    border: 1px solid rgba(255, 255, 255, 0.05);
-    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+    color: var(--text-muted);
+    margin-top: 5px;
+    text-shadow: 0 1px 6px rgba(0, 0, 0, 0.4);
     letter-spacing: 0.4px;
+    white-space: nowrap;
     opacity: 0;
     transition: opacity 0.4s ease;
   }
-  .next-banner.visible { opacity: 1; }
+  .next-line.visible { opacity: 1; }
 
   .info-line {
     max-width: 240px;
@@ -242,22 +233,28 @@
   }
   .info-line.visible { opacity: 0.85; }
 
-  .transition-msg {
+  /* ── Bottom pill (transition messages) ── */
+  .bottom-pill {
+    display: var(--sp-transition-display, block);
     position: absolute;
-    bottom: 22%;
+    bottom: 14%;
     left: 50%;
     transform: translateX(-50%);
     z-index: 4;
-    font-size: 1rem;
+    font-size: 0.82rem;
     font-weight: 600;
     color: var(--text-primary);
     white-space: nowrap;
+    background: rgba(0, 0, 0, 0.55);
+    padding: 4px 16px;
+    border-radius: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    text-shadow: 0 1px 8px rgba(0, 0, 0, 0.5);
+    letter-spacing: 0.4px;
     opacity: 0;
     transition: opacity 0.4s ease;
-    text-shadow: 0 1px 12px rgba(0, 0, 0, 0.7);
-    letter-spacing: 0.5px;
   }
-  .transition-msg.visible { opacity: 1; }
+  .bottom-pill.visible { opacity: 1; }
 
   /* ── States ── */
   @keyframes pulse-pause {
@@ -347,11 +344,11 @@
     <div class="time" id="time">--:--</div>
     <div class="session-label" id="label">Ready</div>
     <div class="stats" id="stats"></div>
+    <div class="next-line" id="nextLine"></div>
     <div class="info-line" id="infoLine"></div>
   </div>
 
-  <div class="next-banner" id="nextBanner"></div>
-  <div class="transition-msg" id="transition"></div>
+  <div class="bottom-pill" id="bottomPill"></div>
 </div>
 
 <script>
@@ -412,9 +409,9 @@ const trackerGroup = document.getElementById('trackerGroup');
 const timeEl       = document.getElementById('time');
 const labelEl      = document.getElementById('label');
 const statsEl      = document.getElementById('stats');
-const nextBanner   = document.getElementById('nextBanner');
+const nextLineEl   = document.getElementById('nextLine');
 const infoLineEl   = document.getElementById('infoLine');
-const transEl      = document.getElementById('transition');
+const bottomPill   = document.getElementById('bottomPill');
 const glowEl       = document.getElementById('glow');
 const container    = document.getElementById('container');
 
@@ -518,8 +515,10 @@ function update(state) {
     statsEl.textContent = '';
     infoLineEl.textContent = '';
     infoLineEl.classList.remove('visible');
-    nextBanner.textContent = '';
-    nextBanner.classList.remove('visible');
+    nextLineEl.textContent = '';
+    nextLineEl.classList.remove('visible');
+    bottomPill.textContent = '';
+    bottomPill.classList.remove('visible');
     ring.style.strokeDashoffset = CIRCUMFERENCE;
     glowEl.classList.remove('active');
     updateRingCap(0, false);
@@ -619,59 +618,60 @@ function update(state) {
     while (trackerGroup.firstChild) trackerGroup.removeChild(trackerGroup.firstChild);
   }
 
-  // Status takeover: when status is active, replace the label
+  // Status takeover: when status is active, replace the label only
   const statusActive = SHOW_STATUS && status_active && status_message;
 
   if (statusActive) {
-    // Takeover: label shows status message, stats & next hide
     labelEl.textContent = status_message;
     labelEl.classList.add('status-active');
-    statsEl.textContent = '';
-    nextBanner.classList.remove('visible');
   } else {
     labelEl.classList.remove('status-active');
-
-    if (!SHOW_STATS) {
-      statsEl.textContent = '';
-    } else if (mode === 'pomodoro' && (is_running || completed_focus_sessions > 0)) {
-      let stat = `${completed_focus_sessions}/${goal_sessions}`;
-      if (total_focus_seconds > 0) stat += ` · ${formatDuration(total_focus_seconds)}`;
-      statsEl.textContent = stat;
-    } else if (mode === 'custom' && custom_segment_count > 0) {
-      statsEl.textContent = `${custom_segment_index || 1}/${custom_segment_count}`;
-    } else if (mode === 'stopwatch' && total_focus_seconds > 0) {
-      statsEl.textContent = formatDuration(total_focus_seconds);
-    } else {
-      statsEl.textContent = '';
-    }
-
-    if (SHOW_NEXT && is_running && !overtime) {
-      let nextText = '';
-      if (next_session_type) nextText = `Next: ${next_session_type}`;
-      if (ends_at) nextText += nextText ? ` · ${ends_at}` : `Ends ${ends_at}`;
-      if (nextText) {
-        nextBanner.textContent = nextText;
-        nextBanner.classList.add('visible');
-      } else {
-        nextBanner.classList.remove('visible');
-      }
-    } else {
-      nextBanner.classList.remove('visible');
-    }
   }
 
-  if (!statusActive && SHOW_CHAT && chat_status_line) {
+  // Stats (always shown, even during status)
+  if (!SHOW_STATS) {
+    statsEl.textContent = '';
+  } else if (mode === 'pomodoro' && (is_running || completed_focus_sessions > 0)) {
+    let stat = `${completed_focus_sessions}/${goal_sessions}`;
+    if (total_focus_seconds > 0) stat += ` · ${formatDuration(total_focus_seconds)}`;
+    statsEl.textContent = stat;
+  } else if (mode === 'custom' && custom_segment_count > 0) {
+    statsEl.textContent = `${custom_segment_index || 1}/${custom_segment_count}`;
+  } else if (mode === 'stopwatch' && total_focus_seconds > 0) {
+    statsEl.textContent = formatDuration(total_focus_seconds);
+  } else {
+    statsEl.textContent = '';
+  }
+
+  // Next-up line (inside center, always shown during running)
+  if (SHOW_NEXT && is_running && !overtime) {
+    let nextText = '';
+    if (next_session_type) nextText = `Next: ${next_session_type}`;
+    if (ends_at) nextText += nextText ? ` · ${ends_at}` : `Ends ${ends_at}`;
+    if (nextText) {
+      nextLineEl.textContent = nextText;
+      nextLineEl.classList.add('visible');
+    } else {
+      nextLineEl.classList.remove('visible');
+    }
+  } else {
+    nextLineEl.classList.remove('visible');
+  }
+
+  // Chat status line
+  if (SHOW_CHAT && chat_status_line) {
     infoLineEl.textContent = chat_status_line;
     infoLineEl.classList.add('visible');
   } else {
     infoLineEl.classList.remove('visible');
   }
 
+  // Transition messages → bottom pill (brief flash)
   if (show_transition && transition_message) {
-    transEl.textContent = transition_message;
-    transEl.classList.add('visible');
+    bottomPill.textContent = transition_message;
+    bottomPill.classList.add('visible');
   } else {
-    transEl.classList.remove('visible');
+    bottomPill.classList.remove('visible');
   }
 }
 

@@ -57,8 +57,8 @@ All properties are optional. Add them inside `body { }` in the Custom CSS field:
 | `--sp-stats-size` | `1rem` | Stats text font size |
 | `--sp-glass-display` | `none` | Set to `block` to show frosted glass circle |
 | `--sp-tracker-stroke` | `4` | Session tracker segment thickness |
-| `--sp-next-display` | `block` | Set to `none` to hide the "Next" banner |
-| `--sp-next-size` | `0.82rem` | Next-up banner text size |
+| `--sp-next-size` | `0.82rem` | Next-up line text size |
+| `--sp-transition-display` | `block` | Set to `none` to hide transition pill |
 | `--sp-backdrop-bg` | dark radial | Backdrop center color |
 | `--sp-backdrop-bg-edge` | darker radial | Backdrop edge color |
 | `--sp-backdrop-blur` | `24px` | Backdrop blur strength |
@@ -74,7 +74,8 @@ body { background-color: rgba(0, 0, 0, 0); margin: 0px auto; overflow: hidden; -
 - **Gradient progress ring** — session-colored gradient (e.g., green→cyan for Focus) with `stroke-linecap: round` and dual drop-shadow glow
 - **Glow cap** — a bright dot that tracks the leading edge of the ring progress
 - **Session tracker** — inner segmented ring showing completed vs. goal sessions. Each segment lights up as sessions complete
-- **Next-up banner** — dark pill at the bottom showing the next session type and end time
+- **Next-up line** — inline text below stats showing the next session type and end time (always visible during sessions)
+- **Transition pill** — dark pill at the bottom that briefly flashes transition messages ("Time for a Short Break")
 - **Breathing glow** — subtle 5-second scale+fade animation behind the ring when running
 - **Tick marks** — 12 subtle clock-face marks for visual reference
 - **Paused state** — timer and label pulse, glow dims
