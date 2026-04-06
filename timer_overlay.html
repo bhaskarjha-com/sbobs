@@ -176,9 +176,22 @@
     text-transform: uppercase;
     letter-spacing: 5px;
     color: var(--text-secondary);
-    transition: color 0.6s ease, text-shadow 0.6s ease;
+    transition: color 0.6s ease, text-shadow 0.6s ease, letter-spacing 0.4s ease;
     text-shadow: 0 1px 8px rgba(0, 0, 0, 0.5);
     margin-top: 6px;
+  }
+
+  /* ── Status takeover — label becomes status message ── */
+  .session-label.status-active {
+    color: var(--sp-status-color, #f59e0b);
+    text-shadow: 0 0 16px rgba(245, 158, 11, 0.4), 0 1px 8px rgba(0, 0, 0, 0.5);
+    letter-spacing: 3px;
+    text-transform: none;
+    animation: pulse-status 2.5s ease-in-out infinite;
+  }
+  @keyframes pulse-status {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
   }
 
   .stats {
@@ -606,38 +619,48 @@ function update(state) {
     while (trackerGroup.firstChild) trackerGroup.removeChild(trackerGroup.firstChild);
   }
 
-  if (!SHOW_STATS) {
-    statsEl.textContent = '';
-  } else if (mode === 'pomodoro' && (is_running || completed_focus_sessions > 0)) {
-    let stat = `${completed_focus_sessions}/${goal_sessions}`;
-    if (total_focus_seconds > 0) stat += ` · ${formatDuration(total_focus_seconds)}`;
-    statsEl.textContent = stat;
-  } else if (mode === 'custom' && custom_segment_count > 0) {
-    statsEl.textContent = `${custom_segment_index || 1}/${custom_segment_count}`;
-  } else if (mode === 'stopwatch' && total_focus_seconds > 0) {
-    statsEl.textContent = formatDuration(total_focus_seconds);
-  } else {
-    statsEl.textContent = '';
-  }
+  // Status takeover: when status is active, replace the label
+  const statusActive = SHOW_STATUS && status_active && status_message;
 
-  if (SHOW_NEXT && is_running && !overtime) {
-    let nextText = '';
-    if (next_session_type) nextText = `Next: ${next_session_type}`;
-    if (ends_at) nextText += nextText ? ` · ${ends_at}` : `Ends ${ends_at}`;
-    if (nextText) {
-      nextBanner.textContent = nextText;
-      nextBanner.classList.add('visible');
+  if (statusActive) {
+    // Takeover: label shows status message, stats & next hide
+    labelEl.textContent = status_message;
+    labelEl.classList.add('status-active');
+    statsEl.textContent = '';
+    nextBanner.classList.remove('visible');
+  } else {
+    labelEl.classList.remove('status-active');
+
+    if (!SHOW_STATS) {
+      statsEl.textContent = '';
+    } else if (mode === 'pomodoro' && (is_running || completed_focus_sessions > 0)) {
+      let stat = `${completed_focus_sessions}/${goal_sessions}`;
+      if (total_focus_seconds > 0) stat += ` · ${formatDuration(total_focus_seconds)}`;
+      statsEl.textContent = stat;
+    } else if (mode === 'custom' && custom_segment_count > 0) {
+      statsEl.textContent = `${custom_segment_index || 1}/${custom_segment_count}`;
+    } else if (mode === 'stopwatch' && total_focus_seconds > 0) {
+      statsEl.textContent = formatDuration(total_focus_seconds);
+    } else {
+      statsEl.textContent = '';
+    }
+
+    if (SHOW_NEXT && is_running && !overtime) {
+      let nextText = '';
+      if (next_session_type) nextText = `Next: ${next_session_type}`;
+      if (ends_at) nextText += nextText ? ` · ${ends_at}` : `Ends ${ends_at}`;
+      if (nextText) {
+        nextBanner.textContent = nextText;
+        nextBanner.classList.add('visible');
+      } else {
+        nextBanner.classList.remove('visible');
+      }
     } else {
       nextBanner.classList.remove('visible');
     }
-  } else {
-    nextBanner.classList.remove('visible');
   }
 
-  if (SHOW_STATUS && status_active && status_message) {
-    infoLineEl.textContent = status_message;
-    infoLineEl.classList.add('visible');
-  } else if (SHOW_CHAT && chat_status_line) {
+  if (!statusActive && SHOW_CHAT && chat_status_line) {
     infoLineEl.textContent = chat_status_line;
     infoLineEl.classList.add('visible');
   } else {
