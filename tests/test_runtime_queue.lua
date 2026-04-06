@@ -618,10 +618,13 @@ do
 
     load_runtime(base_settings, { preserve_state = true })
 
-    local after_file = io.open(TEST_STATE_FILE, "r")
+    local after_file = io.open(TEST_RESUME_FILE, "r")
     local after_content = after_file:read("*all")
     after_file:close()
 
+    -- script_update migrates running state from session_state.json into
+    -- session_resume.json so it can be restored via "Resume Previous Session".
+    -- session_state.json is then overwritten with the current idle state.
     test("script_update preserves resumable running state", after_content:find('"is_running": true', 1, true) ~= nil)
     test("script_update preserves saved current time", after_content:find('"current_time": 90', 1, true) ~= nil)
     cleanup_state_files()
