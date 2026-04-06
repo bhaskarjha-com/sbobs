@@ -746,11 +746,7 @@ do
     local mock_obs, hooks = load_runtime(settings)
 
     test("quick setup returns true", hooks.quick_setup(nil, nil) == true)
-    test("quick setup places timer in current scene", mock_obs.current_scene.items["SP Timer"] ~= nil)
-    test("quick setup places session label in current scene", mock_obs.current_scene.items["SP Session"] ~= nil)
-    test("quick setup places count in current scene", mock_obs.current_scene.items["SP Count"] ~= nil)
-    test("quick setup places progress in current scene", mock_obs.current_scene.items["SP Progress"] ~= nil)
-    test("quick setup places status in current scene", mock_obs.current_scene.items["SP Status"] ~= nil)
+    test("quick setup places overlay bar in current scene", mock_obs.current_scene.items["SP Overlay Bar"] ~= nil)
     local internal_scene = mock_obs.sources["SP Internal"] and mock_obs.sources["SP Internal"].scene or nil
     test("quick setup keeps control source out of current scene", mock_obs.current_scene.items["SP Control"] == nil)
     test("quick setup keeps control source out of alternate scene", mock_obs.alternate_scene.items["SP Control"] == nil)
