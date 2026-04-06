@@ -57,6 +57,7 @@ This automatically:
 - ✅ Assigns **default background images** (Focus, Short Break, Long Break) — color-matched to the overlays
 - ✅ Creates a looping music source (`SP Background Music`)
 - ✅ Creates an alert sound source (`SP Alert Sound`)
+- ✅ Assigns **default alert sounds** (Focus start, Short Break start, Long Break start)
 - ✅ Adds all sources to your currently active scene
 - ✅ Auto-fits background sources to your canvas (any resolution)
 

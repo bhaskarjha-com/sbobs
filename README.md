@@ -2,7 +2,7 @@
 
 **Session automation engine for OBS Studio** — Pomodoro timer, source-level automation, overlays, and more.
 
-![banner](assets/banner.png)
+![banner](assets/screenshots/banner.png)
 
 > One script. Zero dependencies. Full automation.
 
@@ -72,7 +72,7 @@ Hit your Start hotkey. Watch the magic.
 
 | Control Dock | Ring Overlay | Stats Dashboard |
 |:---:|:---:|:---:|
-| ![dock](assets/dock.png) | ![overlay](assets/overlay.png) | ![stats](assets/stats.png) |
+| ![dock](assets/screenshots/dock.png) | ![overlay](assets/screenshots/overlay.png) | ![stats](assets/screenshots/stats.png) |
 
 ---
 

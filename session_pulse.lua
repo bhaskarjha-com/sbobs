@@ -3219,6 +3219,33 @@ quick_setup = function(props, p)
             update_background_media()
             log("Quick Setup: Assigned " .. images_assigned .. " default background image(s)")
         end
+
+        -- ── 7c. Auto-assign default alert sounds (only if not already set) ──
+        local snd_base = script_path() .. "assets" .. (package.config:sub(1, 1)) .. "sounds" .. (package.config:sub(1, 1))
+        local default_sounds = {
+            { key = "focus_alert_sound_path",       file = "focus_start.mp3" },
+            { key = "short_break_alert_sound_path", file = "short_break_start.mp3" },
+            { key = "long_break_alert_sound_path",  file = "long_break_start.mp3" },
+        }
+        local sounds_assigned = 0
+        for _, snd in ipairs(default_sounds) do
+            local current = obs.obs_data_get_string(quick_setup_settings, snd.key)
+            if not current or current == "" then
+                local full_path = snd_base .. snd.file
+                local f = io.open(full_path, "r")
+                if f then
+                    f:close()
+                    obs.obs_data_set_string(quick_setup_settings, snd.key, full_path)
+                    sounds_assigned = sounds_assigned + 1
+                end
+            end
+        end
+        if sounds_assigned > 0 then
+            alert_sound_paths.Focus = obs.obs_data_get_string(quick_setup_settings, "focus_alert_sound_path")
+            alert_sound_paths["Short Break"] = obs.obs_data_get_string(quick_setup_settings, "short_break_alert_sound_path")
+            alert_sound_paths["Long Break"] = obs.obs_data_get_string(quick_setup_settings, "long_break_alert_sound_path")
+            log("Quick Setup: Assigned " .. sounds_assigned .. " default alert sound(s)")
+        end
     end
 
     for _, source in ipairs(source_handles) do
