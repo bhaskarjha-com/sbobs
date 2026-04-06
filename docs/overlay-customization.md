@@ -128,12 +128,12 @@ The overlay renders at **400×400** by default for maximum sharpness. In OBS, re
 
 ## Bar Overlay (`timer_overlay_bar.html`)
 
-A horizontal progress bar for the edge of your stream.
+A horizontal progress bar for the edge of your stream. Shares the same color system as the ring overlay — user color customizations apply to both.
 
 ### Basic Setup
 
 1. Add a **Browser Source** → select `timer_overlay_bar.html`
-2. Set Width: **1920** (your stream width), Height: **36**
+2. Set Width: **1920** (your stream width), Height: **38**
 3. Position at the top or bottom edge of your canvas
 
 ### Position
@@ -144,12 +144,38 @@ By default the bar slides in from the top. To slide from the bottom, add to Cust
 body { --sp-position: bottom; }
 ```
 
+### Bar Properties
+
+All properties are optional. Add them inside `body { }` in the Custom CSS field:
+
+| Property | Default | Description |
+|----------|---------|-------------|
+| `--sp-bar-height` | `38px` | Bar height |
+| `--sp-bar-bg` | dark (0.78 opacity) | Bar background color |
+| `--sp-bar-blur` | `18px` | Bar backdrop blur strength |
+| `--sp-bar-progress-height` | `6px` | Progress bar track height |
+| `--sp-bar-label-size` | `0.72rem` | Session label font size |
+| `--sp-bar-time-size` | `1.05rem` | Timer text font size |
+| `--sp-bar-counter-size` | `0.65rem` | Session counter font size |
+| `--sp-position` | `top` | Bar position: `top` or `bottom` |
+
+### Visual Features
+
+- **Gradient progress bar** — session-colored gradient (e.g., green→cyan for Focus) with glow
+- **Session-colored border accent** — 2px colored line at the sliding edge
+- **Status takeover** — when SP Status is active, label changes to status message in amber with pulse
+- **Next-up info** — "Next: Short Break · 10:20" displayed on the right side
+- **Focus duration** — counter shows `3/6 · 23m` (sessions + total time)
+- **Paused state** — timer and label pulse, progress dims
+- **Overtime** — progress track pulses red
+
 ### Behavior
 
 - **Auto-hides** when the timer is idle (slides out)
 - **Slides in** when the timer starts
-- **Color-coded** by session type (same colors as the ring)
-- The bar fills left-to-right as the session progresses
+- **Color-coded** — gradient fill + border glow matches session type
+- **Shared colors** — uses the same `--focus-color`, `--short-break-color`, etc. as the ring
+- Transition messages ("Time for a Short Break") appear briefly on the right
 
 ---
 

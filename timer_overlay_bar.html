@@ -6,15 +6,34 @@
 <title>SessionPulse — Bar Overlay</title>
 <style>
   :root {
-    --focus: #22c55e;
-    --short-break: #3b82f6;
-    --long-break: #a855f7;
-    --stopwatch: #f59e0b;
-    --countdown: #f97316;
-    --overtime: #ef4444;
-    --idle: #475569;
-    --bar-bg: rgba(0, 0, 0, 0.55);
-    --bar-height: 36px;
+    /* Shared with ring overlay — user can set once for both */
+    --focus-color: #22c55e;
+    --focus-glow: rgba(34, 197, 94, 0.3);
+    --focus-gradient-end: #06b6d4;
+    --short-break-color: #3b82f6;
+    --short-break-glow: rgba(59, 130, 246, 0.3);
+    --short-break-gradient-end: #818cf8;
+    --long-break-color: #a855f7;
+    --long-break-glow: rgba(168, 85, 247, 0.3);
+    --long-break-gradient-end: #ec4899;
+    --stopwatch-color: #f59e0b;
+    --stopwatch-glow: rgba(245, 158, 11, 0.3);
+    --stopwatch-gradient-end: #f97316;
+    --countdown-color: #f97316;
+    --countdown-glow: rgba(249, 115, 22, 0.3);
+    --countdown-gradient-end: #ef4444;
+    --overtime-color: #ef4444;
+    --overtime-glow: rgba(239, 68, 68, 0.4);
+    --overtime-gradient-end: #f97316;
+    --idle-color: #475569;
+
+    /* Bar-specific */
+    --bar-height: var(--sp-bar-height, 38px);
+    --bar-bg: var(--sp-bar-bg, rgba(6, 10, 22, 0.78));
+    --bar-progress-h: var(--sp-bar-progress-height, 6px);
+    --text-primary: #f1f5f9;
+    --text-secondary: rgba(241, 245, 249, 0.7);
+    --text-muted: rgba(241, 245, 249, 0.45);
   }
 
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -25,124 +44,157 @@
     overflow: hidden;
   }
 
+  /* ── Bar container ── */
   .bar-container {
     position: fixed;
     width: 100%;
     height: var(--bar-height);
     background: var(--bar-bg);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(var(--sp-bar-blur, 18px));
+    -webkit-backdrop-filter: blur(var(--sp-bar-blur, 18px));
     display: flex;
     align-items: center;
-    padding: 0 14px;
-    gap: 10px;
-    border-radius: 0;
+    padding: 0 16px;
+    gap: 12px;
     opacity: 0;
     transform: translateY(-100%);
-    transition: opacity 0.4s ease, transform 0.4s ease;
+    transition: opacity 0.4s ease, transform 0.4s cubic-bezier(0.16, 1, 0.3, 1),
+                border-color 0.6s ease, box-shadow 0.6s ease;
+    border-bottom: 2px solid transparent;
   }
   .bar-container.visible {
     opacity: 1;
     transform: translateY(0);
   }
 
-  /* Position variants via URL param */
+  /* Position variants */
   .bar-container.top { top: 0; }
-  .bar-container.bottom { top: auto; bottom: 0; transform: translateY(100%); }
+  .bar-container.bottom {
+    top: auto;
+    bottom: 0;
+    transform: translateY(100%);
+    border-bottom: none;
+    border-top: 2px solid transparent;
+  }
   .bar-container.bottom.visible { transform: translateY(0); }
 
+  /* ── Session icon ── */
   .session-icon {
-    font-size: 0.75rem;
-    width: 22px;
-    height: 22px;
+    font-size: 0.8rem;
+    width: 24px;
+    height: 24px;
     border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-    transition: background 0.3s;
+    transition: background 0.4s ease, box-shadow 0.4s ease;
   }
-  .session-icon.focus { background: rgba(34, 197, 94, 0.2); }
-  .session-icon.short-break { background: rgba(59, 130, 246, 0.2); }
-  .session-icon.long-break { background: rgba(168, 85, 247, 0.2); }
-  .session-icon.stopwatch { background: rgba(245, 158, 11, 0.2); }
-  .session-icon.countdown { background: rgba(249, 115, 22, 0.2); }
-  .session-icon.overtime { background: rgba(239, 68, 68, 0.2); }
 
+  /* ── Session label ── */
   .session-label {
-    font-size: 0.6rem;
+    font-size: var(--sp-bar-label-size, 0.72rem);
     font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 1.2px;
-    color: rgba(255, 255, 255, 0.7);
+    letter-spacing: 1.5px;
+    color: var(--text-secondary);
     white-space: nowrap;
-    min-width: 50px;
+    min-width: 45px;
+    transition: color 0.4s ease, text-shadow 0.4s ease;
   }
 
+  /* Status takeover on label */
+  .session-label.status-active {
+    color: var(--sp-status-color, #f59e0b);
+    text-shadow: 0 0 10px rgba(245, 158, 11, 0.3);
+    text-transform: none;
+    letter-spacing: 0.8px;
+    animation: pulse-status 2.5s ease-in-out infinite;
+  }
+  @keyframes pulse-status {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+  }
+
+  /* ── Timer text ── */
   .time-text {
-    font-size: 1rem;
+    font-size: var(--sp-bar-time-size, 1.05rem);
     font-weight: 700;
-    color: #fff;
+    color: var(--text-primary);
     font-variant-numeric: tabular-nums;
     letter-spacing: -0.5px;
     white-space: nowrap;
+    text-shadow: 0 1px 6px rgba(0, 0, 0, 0.3);
+    transition: color 0.3s ease, text-shadow 0.3s ease;
   }
-  .time-text.overtime { color: var(--overtime); }
+  .time-text.overtime {
+    color: var(--overtime-color);
+    text-shadow: 0 0 12px rgba(239, 68, 68, 0.4);
+  }
 
+  /* ── Progress bar ── */
   .progress-track {
     flex: 1;
-    height: 4px;
-    background: rgba(255, 255, 255, 0.1);
+    height: var(--bar-progress-h);
+    background: rgba(255, 255, 255, 0.08);
     border-radius: 99px;
     overflow: hidden;
-    min-width: 40px;
+    min-width: 60px;
   }
 
   .progress-fill {
     height: 100%;
     border-radius: 99px;
     width: 0%;
-    transition: width 0.8s ease, background 0.3s;
+    transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
   }
-  .progress-fill.focus { background: var(--focus); }
-  .progress-fill.short-break { background: var(--short-break); }
-  .progress-fill.long-break { background: var(--long-break); }
-  .progress-fill.stopwatch { background: var(--stopwatch); }
-  .progress-fill.countdown { background: var(--countdown); }
-  .progress-fill.overtime { background: var(--overtime); }
 
+  /* ── Session counter ── */
   .session-counter {
-    font-size: 0.55rem;
+    font-size: var(--sp-bar-counter-size, 0.65rem);
     font-weight: 500;
-    color: rgba(255, 255, 255, 0.45);
+    color: var(--text-muted);
     white-space: nowrap;
     letter-spacing: 0.5px;
   }
 
-  .paused-indicator {
-    font-size: 0.5rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    color: #eab308;
-    animation: pulse 1.5s infinite;
-    white-space: nowrap;
-  }
-
-  @keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.4; }
-  }
-
-  .transition-text {
+  /* ── Next-up info ── */
+  .next-info {
     font-size: 0.65rem;
     font-weight: 500;
-    color: rgba(255, 255, 255, 0.8);
+    color: var(--text-muted);
     white-space: nowrap;
+    letter-spacing: 0.3px;
     opacity: 0;
-    transition: opacity 0.3s;
+    transition: opacity 0.4s ease;
+    margin-left: auto;
   }
-  .transition-text.visible { opacity: 1; }
+  .next-info.visible { opacity: 1; }
+
+  /* ── Paused state ── */
+  @keyframes pulse-pause {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.25; }
+  }
+  .bar-container.paused .time-text {
+    animation: pulse-pause 2.2s ease-in-out infinite;
+  }
+  .bar-container.paused .session-label {
+    animation: pulse-pause 2.2s ease-in-out infinite;
+  }
+  .bar-container.paused .progress-fill {
+    opacity: 0.5;
+  }
+
+  /* ── Overtime state ── */
+  @keyframes pulse-overtime {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
+  .bar-container.overtime .progress-track {
+    animation: pulse-overtime 1.5s ease-in-out infinite;
+  }
 </style>
 </head>
 <body>
@@ -155,25 +207,24 @@
     <div class="progress-fill" id="progressFill"></div>
   </div>
   <div class="session-counter" id="sessionCounter"></div>
-  <div class="paused-indicator" id="pausedBadge" style="display:none">PAUSED</div>
-  <div class="transition-text" id="transitionText"></div>
+  <div class="next-info" id="nextInfo"></div>
 </div>
 
 <script>
 const POLL_INTERVAL = 750;
-// Position can be set via OBS Custom CSS:  body { --sp-position: bottom; }
-// OBS injects Custom CSS AFTER scripts run, so we poll for it.
 const params = new URLSearchParams(window.location.search);
+const SHOW_NEXT = params.get('showNext') !== 'false';
+const SHOW_STATUS = params.get('showStatus') !== 'false';
 
-const bar = document.getElementById('bar');
-const sessionIcon = document.getElementById('sessionIcon');
-const sessionLabel = document.getElementById('sessionLabel');
-const timeText = document.getElementById('timeText');
-const progressFill = document.getElementById('progressFill');
+const bar            = document.getElementById('bar');
+const sessionIcon    = document.getElementById('sessionIcon');
+const sessionLabel   = document.getElementById('sessionLabel');
+const timeText       = document.getElementById('timeText');
+const progressFill   = document.getElementById('progressFill');
 const sessionCounter = document.getElementById('sessionCounter');
-const pausedBadge = document.getElementById('pausedBadge');
-const transitionText = document.getElementById('transitionText');
+const nextInfo       = document.getElementById('nextInfo');
 
+// Position: via CSS var or URL param
 function applySPPosition() {
   const cssPos = getComputedStyle(document.body).getPropertyValue('--sp-position').trim();
   const pos = cssPos || params.get('position') || 'top';
@@ -195,9 +246,15 @@ const ICONS = {
   'Stopwatch': '⏱️', 'Countdown': '⏳',
 };
 
-const CLASSES = {
-  'Focus': 'focus', 'Short Break': 'short-break', 'Long Break': 'long-break',
+// Color lookup — resolves CSS variables for inline styles
+const COLOR_MAP = {
+  'Focus':       { color: 'var(--focus-color)',       glow: 'var(--focus-glow)',       grad: 'var(--focus-gradient-end)',       rawHex: '#22c55e', rawGlow: 'rgba(34,197,94,0.3)' },
+  'Short Break': { color: 'var(--short-break-color)', glow: 'var(--short-break-glow)', grad: 'var(--short-break-gradient-end)', rawHex: '#3b82f6', rawGlow: 'rgba(59,130,246,0.3)' },
+  'Long Break':  { color: 'var(--long-break-color)',  glow: 'var(--long-break-glow)',  grad: 'var(--long-break-gradient-end)',  rawHex: '#a855f7', rawGlow: 'rgba(168,85,247,0.3)' },
+  'Stopwatch':   { color: 'var(--stopwatch-color)',   glow: 'var(--stopwatch-glow)',   grad: 'var(--stopwatch-gradient-end)',   rawHex: '#f59e0b', rawGlow: 'rgba(245,158,11,0.3)' },
+  'Countdown':   { color: 'var(--countdown-color)',   glow: 'var(--countdown-glow)',   grad: 'var(--countdown-gradient-end)',   rawHex: '#f97316', rawGlow: 'rgba(249,115,22,0.3)' },
 };
+const OVERTIME_COLORS = { color: 'var(--overtime-color)', glow: 'var(--overtime-glow)', grad: 'var(--overtime-gradient-end)', rawHex: '#ef4444', rawGlow: 'rgba(239,68,68,0.4)' };
 
 function formatTime(seconds) {
   if (seconds == null || seconds < 0) return '--:--';
@@ -208,84 +265,134 @@ function formatTime(seconds) {
   return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
 }
 
+function formatDuration(seconds) {
+  if (!seconds) return '';
+  const mins = Math.floor(seconds / 60);
+  if (mins < 60) return `${mins}m`;
+  const h = Math.floor(mins / 60);
+  const rm = mins % 60;
+  return rm === 0 ? `${h}h` : `${h}h ${rm}m`;
+}
+
 function update(state) {
   if (!state || !state.is_running) {
-    bar.classList.remove('visible');
+    bar.classList.remove('visible', 'paused', 'overtime');
     return;
   }
 
   bar.classList.add('visible');
 
   const { session_type, current_time, total_time, is_paused, timer_mode,
-          completed_focus_sessions, goal_sessions, custom_segment_name,
-          custom_segment_index, custom_segment_count, is_overtime,
-          overtime_seconds, show_transition, transition_message } = state;
+          completed_focus_sessions, goal_sessions, total_focus_seconds,
+          custom_segment_name, custom_segment_index, custom_segment_count,
+          is_overtime, overtime_seconds, show_transition, transition_message,
+          next_session_type, ends_at, status_active, status_message } = state;
 
   const mode = timer_mode || 'pomodoro';
   const overtime = is_overtime || false;
 
-  // Session icon & label
+  // Container state classes
+  bar.classList.toggle('paused', !!is_paused);
+  bar.classList.toggle('overtime', overtime);
+
+  // Session identity
   let label = session_type || 'Timer';
   let iconText = ICONS[session_type] || '⏱️';
-  let colorCls = CLASSES[session_type] || 'focus';
+  let colors = COLOR_MAP[session_type] || COLOR_MAP['Focus'];
 
   if (mode === 'stopwatch') {
-    label = 'Stopwatch'; iconText = '⏱️'; colorCls = 'stopwatch';
+    label = 'Stopwatch'; iconText = '⏱️'; colors = COLOR_MAP['Stopwatch'];
   } else if (mode === 'countdown') {
-    label = 'Countdown'; iconText = '⏳'; colorCls = 'countdown';
+    label = 'Countdown'; iconText = '⏳'; colors = COLOR_MAP['Countdown'];
   } else if (mode === 'custom' && custom_segment_name) {
     label = custom_segment_name; iconText = '📋';
   }
 
   if (overtime) {
-    colorCls = 'overtime';
+    colors = OVERTIME_COLORS;
     iconText = '🔥';
-    label += ' OT';
   }
 
+  // Icon
   sessionIcon.textContent = iconText;
-  sessionIcon.className = 'session-icon ' + colorCls;
-  sessionLabel.textContent = label.toUpperCase();
+  sessionIcon.style.background = `${colors.rawGlow}`;
+  sessionIcon.style.boxShadow = `0 0 8px ${colors.rawGlow}`;
 
-  // Time
+  // Label — status takeover or session name
+  const statusActive = SHOW_STATUS && status_active && status_message;
+  if (statusActive) {
+    sessionLabel.textContent = status_message;
+    sessionLabel.classList.add('status-active');
+  } else {
+    sessionLabel.classList.remove('status-active');
+    let displayLabel = label;
+    if (overtime) displayLabel += ' · OT';
+    else if (is_paused) displayLabel += ' · Paused';
+    sessionLabel.textContent = displayLabel.toUpperCase();
+    sessionLabel.style.color = '';
+    sessionLabel.style.textShadow = '';
+  }
+
+  // Timer
   if (overtime) {
     timeText.textContent = '+' + formatTime(overtime_seconds || 0);
-    timeText.className = 'time-text overtime';
+    timeText.classList.add('overtime');
   } else {
     timeText.textContent = formatTime(current_time);
-    timeText.className = 'time-text';
+    timeText.classList.remove('overtime');
   }
 
   // Progress
   let progress = 0;
-  if (overtime) {
-    progress = 100;
-  } else if (mode === 'stopwatch') {
-    progress = ((current_time % 3600) / 3600) * 100;
-  } else if (total_time > 0) {
-    progress = ((total_time - current_time) / total_time) * 100;
-  }
+  if (overtime) { progress = 100; }
+  else if (mode === 'stopwatch') { progress = ((current_time % 3600) / 3600) * 100; }
+  else if (total_time > 0) { progress = ((total_time - current_time) / total_time) * 100; }
   progressFill.style.width = progress + '%';
-  progressFill.className = 'progress-fill ' + colorCls;
 
-  // Counter
-  if (mode === 'pomodoro') {
-    sessionCounter.textContent = `${completed_focus_sessions || 0}/${goal_sessions || 0}`;
-  } else if (mode === 'custom') {
-    sessionCounter.textContent = `${custom_segment_index || 1}/${custom_segment_count || 0}`;
+  // Progress gradient + glow
+  progressFill.style.background = `linear-gradient(90deg, ${colors.color}, ${colors.grad})`;
+  progressFill.style.boxShadow = `0 0 8px ${colors.rawGlow}, 0 0 3px ${colors.rawGlow}`;
+
+  // Session-colored border accent
+  const pos = bar.classList.contains('bottom') ? 'borderTop' : 'borderBottom';
+  const otherPos = pos === 'borderTop' ? 'borderBottom' : 'borderTop';
+  bar.style[pos] = `2px solid ${colors.rawHex}`;
+  bar.style[otherPos] = 'none';
+  bar.style.boxShadow = `0 ${pos === 'borderBottom' ? '2' : '-2'}px 12px ${colors.rawGlow}`;
+
+  // Session counter
+  if (mode === 'pomodoro' && goal_sessions > 0) {
+    let counter = `${completed_focus_sessions || 0}/${goal_sessions}`;
+    if (total_focus_seconds > 0) counter += ` · ${formatDuration(total_focus_seconds)}`;
+    sessionCounter.textContent = counter;
+  } else if (mode === 'custom' && custom_segment_count > 0) {
+    sessionCounter.textContent = `${custom_segment_index || 1}/${custom_segment_count}`;
+  } else if (mode === 'stopwatch' && total_focus_seconds > 0) {
+    sessionCounter.textContent = formatDuration(total_focus_seconds);
   } else {
     sessionCounter.textContent = '';
   }
 
-  // Paused
-  pausedBadge.style.display = is_paused ? 'block' : 'none';
-
-  // Transition
+  // Next-up / transition (right side)
   if (show_transition && transition_message) {
-    transitionText.textContent = transition_message;
-    transitionText.classList.add('visible');
+    nextInfo.textContent = transition_message;
+    nextInfo.style.color = 'var(--text-primary)';
+    nextInfo.style.fontWeight = '600';
+    nextInfo.classList.add('visible');
+  } else if (SHOW_NEXT && !overtime) {
+    let nextText = '';
+    if (next_session_type) nextText = `Next: ${next_session_type}`;
+    if (ends_at) nextText += nextText ? ` · ${ends_at}` : `Ends ${ends_at}`;
+    if (nextText) {
+      nextInfo.textContent = nextText;
+      nextInfo.style.color = '';
+      nextInfo.style.fontWeight = '';
+      nextInfo.classList.add('visible');
+    } else {
+      nextInfo.classList.remove('visible');
+    }
   } else {
-    transitionText.classList.remove('visible');
+    nextInfo.classList.remove('visible');
   }
 }
 
@@ -306,26 +413,16 @@ async function poll() {
       update(lastState);
     } else {
       consecutiveFetchFailures += 1;
-      if (consecutiveFetchFailures >= 2) {
-        lastState = null;
-        update(null);
-      } else {
-        update(lastState);
-      }
+      if (consecutiveFetchFailures >= 2) { lastState = null; update(null); }
+      else update(lastState);
     }
   } catch (e) {
     consecutiveFetchFailures += 1;
-    if (consecutiveFetchFailures >= 2) {
-      lastState = null;
-      update(null);
-    } else {
-      update(lastState);
-    }
+    if (consecutiveFetchFailures >= 2) { lastState = null; update(null); }
+    else update(lastState);
   } finally {
     pollInFlight = false;
-    if (!pollStopped) {
-      pollTimer = setTimeout(poll, POLL_INTERVAL);
-    }
+    if (!pollStopped) pollTimer = setTimeout(poll, POLL_INTERVAL);
   }
 }
 
