@@ -54,6 +54,7 @@ This automatically:
 - ✅ Creates the **bar overlay** (`SP Overlay Bar` — horizontal status strip, 1920×48)
 - ✅ Creates the internal control source (`SP Control`) used by the dock and overlay controls
 - ✅ Creates background sources (`SP Background Image`, `SP Background Video`)
+- ✅ Assigns **default background images** (Focus, Short Break, Long Break) — color-matched to the overlays
 - ✅ Creates a looping music source (`SP Background Music`)
 - ✅ Creates an alert sound source (`SP Alert Sound`)
 - ✅ Adds all sources to your currently active scene

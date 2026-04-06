@@ -3191,6 +3191,34 @@ quick_setup = function(props, p)
         volume_source_name = "SP Background Music"
 
         log("Quick Setup: Auto-assigned sources to settings")
+
+        -- ── 7b. Auto-assign default background images (only if not already set) ──
+        local bg_base = script_path() .. "assets" .. (package.config:sub(1, 1)) .. "backgrounds" .. (package.config:sub(1, 1))
+        local default_images = {
+            { key = "focus_background_image",       file = "focus.png" },
+            { key = "short_break_background_image", file = "short_break.png" },
+            { key = "long_break_background_image",  file = "long_break.png" },
+        }
+        local images_assigned = 0
+        for _, img in ipairs(default_images) do
+            local current = obs.obs_data_get_string(quick_setup_settings, img.key)
+            if not current or current == "" then
+                local full_path = bg_base .. img.file
+                local f = io.open(full_path, "r")
+                if f then
+                    f:close()
+                    obs.obs_data_set_string(quick_setup_settings, img.key, full_path)
+                    images_assigned = images_assigned + 1
+                end
+            end
+        end
+        if images_assigned > 0 then
+            background_image_paths.Focus = obs.obs_data_get_string(quick_setup_settings, "focus_background_image")
+            background_image_paths["Short Break"] = obs.obs_data_get_string(quick_setup_settings, "short_break_background_image")
+            background_image_paths["Long Break"] = obs.obs_data_get_string(quick_setup_settings, "long_break_background_image")
+            update_background_media()
+            log("Quick Setup: Assigned " .. images_assigned .. " default background image(s)")
+        end
     end
 
     for _, source in ipairs(source_handles) do

@@ -46,7 +46,7 @@ SessionPulse turns OBS into a productivity cockpit. Start a focus timer, and it 
 
 Click **🚀 Quick Setup** in the script panel. Done.
 
-This creates the **ring overlay**, **bar overlay**, background image/video/music sources, and the alert source, adds them to your current scene, and wires them into the script. For individual text sources (SP Timer, SP Session, etc.), see [`docs/overlay-customization.md`](docs/overlay-customization.md#manual-text-sources-advanced).
+This creates the **ring overlay**, **bar overlay**, background image/video/music sources with **default session-matched backgrounds**, and the alert source, adds them to your current scene, and wires them into the script. For individual text sources (SP Timer, SP Session, etc.), see [`docs/overlay-customization.md`](docs/overlay-customization.md#manual-text-sources-advanced).
 
 If OBS closes or crashes mid-session, use **Resume Previous Session** to continue from the exact saved point, including the timer's progress position.
 
