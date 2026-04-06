@@ -1,6 +1,12 @@
 # Overlay Customization
 
-SessionPulse includes two overlay styles — a **circular ring** and a **horizontal bar** — both highly customizable via URL parameters.
+SessionPulse includes two overlay styles — a **circular ring** and a **horizontal bar** — both highly customizable via the **Custom CSS** field in OBS Browser Source properties.
+
+> **Why Custom CSS instead of URL parameters?**
+> OBS's "Local File" mode doesn't support URL query parameters (`?theme=neon`).
+> Using `file:///` URLs as a workaround breaks the overlay because OBS's CEF browser
+> blocks `fetch()` requests from `file://` origins. The Custom CSS approach works
+> perfectly with Local File mode — no workarounds needed.
 
 ---
 
@@ -14,54 +20,74 @@ SessionPulse includes two overlay styles — a **circular ring** and a **horizon
 
 ### Themes
 
-Add `?theme=THEME_NAME` to the file path:
+SessionPulse ships with 4 built-in themes. Set them in the **Custom CSS** field:
 
-| Theme | Look | Best For |
-|-------|------|----------|
-| `default` | Clean green ring, subtle glow | Most streams |
-| `neon` | Bright glow, high contrast | Dark/gaming streams |
-| `minimal` | No glow, thin ring, muted colors | Professional/clean layouts |
-| `glassmorphism` | Frosted glass background, blur effect | Modern/aesthetic streams |
+| Theme | Custom CSS | Look |
+|-------|-----------|------|
+| `default` | *(no extra CSS needed)* | Clean green ring, subtle glow |
+| `neon` | `body { --sp-theme: neon; }` | Bright glow, high contrast |
+| `minimal` | `body { --sp-theme: minimal; }` | No glow, thin ring, muted |
+| `glassmorphism` | `body { --sp-theme: glassmorphism; }` | Frosted glass, blur effect |
 
 **How to set a theme:**
 
-In the Browser Source properties, after the file path, add the parameter:
-```
-timer_overlay.html?theme=neon
-```
+1. Double-click the SP Overlay source in your scene
+2. Find the **Custom CSS** field at the bottom of the properties
+3. Add the theme variable alongside the existing CSS:
 
-### URL Parameters Reference
-
-All parameters are optional. Combine them with `&`:
-
-```
-timer_overlay.html?theme=neon&size=300&font=Outfit&showStats=false
+```css
+body { background-color: rgba(0, 0, 0, 0); margin: 0px auto; overflow: hidden; --sp-theme: neon; }
 ```
 
-| Parameter | Default | Description | Example |
-|-----------|---------|-------------|---------|
-| `theme` | `default` | Visual theme | `?theme=glassmorphism` |
-| `size` | `220` | Ring diameter in pixels | `?size=300` |
-| `font` | `Inter` | Any [Google Font](https://fonts.google.com) name | `?font=Outfit` |
-| `showStats` | `true` | Show session count below timer | `?showStats=false` |
-| `showNext` | `true` | Show "Next: Short Break · Ends 14:25" helper text | `?showNext=false` |
+### Custom CSS Properties Reference
+
+All properties are optional. Add them inside `body { }` in the Custom CSS field:
+
+```css
+body {
+  background-color: rgba(0, 0, 0, 0);
+  margin: 0px auto;
+  overflow: hidden;
+  --sp-theme: neon;
+  --sp-size: 300;
+}
+```
+
+| Property | Default | Description | Example |
+|----------|---------|-------------|---------|
+| `--sp-theme` | `default` | Visual theme | `--sp-theme: neon;` |
+| `--sp-size` | `220` | Ring diameter in pixels | `--sp-size: 300;` |
+
+> **Tip:** When changing `--sp-size`, also update the Browser Source **Width** and **Height** to match.
 
 ### Custom Colors
 
-Override the default session colors with hex codes (with or without `#`):
+Override the default session colors by adding CSS custom properties in the Custom CSS field:
 
-| Parameter | Default | Session |
-|-----------|---------|---------|
-| `color_focus` | `22c55e` (green) | Focus |
-| `color_short_break` | `3b82f6` (blue) | Short Break |
-| `color_long_break` | `a855f7` (purple) | Long Break |
-| `color_stopwatch` | `f59e0b` (amber) | Stopwatch |
-| `color_countdown` | `f97316` (orange) | Countdown |
+```css
+body {
+  background-color: rgba(0, 0, 0, 0);
+  margin: 0px auto;
+  overflow: hidden;
+  --focus-color: #ec4899;
+  --focus-glow: rgba(236, 72, 153, 0.3);
+  --short-break-color: #06b6d4;
+  --short-break-glow: rgba(6, 182, 212, 0.3);
+  --long-break-color: #8b5cf6;
+  --long-break-glow: rgba(139, 92, 246, 0.3);
+}
+```
 
-**Example — Pink focus, cyan breaks:**
-```
-timer_overlay.html?color_focus=ec4899&color_short_break=06b6d4&color_long_break=8b5cf6
-```
+| Property | Default | Session |
+|----------|---------|---------|
+| `--focus-color` | `#22c55e` (green) | Focus |
+| `--focus-glow` | `rgba(34, 197, 94, 0.3)` | Focus glow |
+| `--short-break-color` | `#3b82f6` (blue) | Short Break |
+| `--short-break-glow` | `rgba(59, 130, 246, 0.3)` | Short Break glow |
+| `--long-break-color` | `#a855f7` (purple) | Long Break |
+| `--long-break-glow` | `rgba(168, 85, 247, 0.3)` | Long Break glow |
+| `--stopwatch-color` | `#f59e0b` (amber) | Stopwatch |
+| `--countdown-color` | `#f97316` (orange) | Countdown |
 
 ### Size Recommendations
 
@@ -91,15 +117,17 @@ A horizontal progress bar for the edge of your stream.
 2. Set Width: **1920** (your stream width), Height: **36**
 3. Position at the top or bottom edge of your canvas
 
-### Parameters
+### Position
 
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `position` | `top` | `top` or `bottom` — affects slide animation direction |
+By default the bar slides in from the top. To slide from the bottom, add to Custom CSS:
 
+```css
+body { --sp-position: bottom; }
 ```
-timer_overlay_bar.html?position=bottom
-```
+
+| Property | Default | Description |
+|----------|---------|-------------|
+| `--sp-position` | `top` | `top` or `bottom` — affects slide animation direction |
 
 ### Behavior
 
@@ -113,28 +141,28 @@ timer_overlay_bar.html?position=bottom
 ## Common Setups
 
 ### Gaming Stream
+```css
+body { background-color: rgba(0,0,0,0); margin: 0px auto; overflow: hidden; --sp-theme: neon; --sp-size: 150; }
 ```
-timer_overlay.html?theme=neon&size=150&showStats=false&showNext=false
-```
-Small, glowing, unobtrusive. No text clutter.
+Small, glowing, unobtrusive. Set Browser Source to 150×150.
 
 ### Study With Me
+```css
+body { background-color: rgba(0,0,0,0); margin: 0px auto; overflow: hidden; --sp-size: 250; }
 ```
-timer_overlay.html?theme=default&size=250&font=Outfit
-```
-Larger, clean, readable. Shows all stats.
+Larger, clean, readable. Set Browser Source to 250×250.
 
 ### Professional / Podcast
+```css
+body { background-color: rgba(0,0,0,0); margin: 0px auto; overflow: hidden; --sp-theme: minimal; --sp-size: 180; --focus-color: #6366f1; --focus-glow: rgba(99, 102, 241, 0.3); }
 ```
-timer_overlay.html?theme=minimal&size=180&color_focus=6366f1&showNext=false
-```
-Muted, branded colors, no distracting text.
+Muted, branded colors, thin ring. Set Browser Source to 180×180.
 
 ### Aesthetic / Lofi
+```css
+body { background-color: rgba(0,0,0,0); margin: 0px auto; overflow: hidden; --sp-theme: glassmorphism; --sp-size: 280; --focus-color: #f472b6; --focus-glow: rgba(244, 114, 182, 0.3); }
 ```
-timer_overlay.html?theme=glassmorphism&size=280&font=DM+Sans&color_focus=f472b6
-```
-Frosted glass, soft pink, modern font.
+Frosted glass, soft pink. Set Browser Source to 280×280.
 
 ### Dual Overlay (Ring + Bar)
 Add both as separate Browser Sources:

@@ -198,7 +198,7 @@
   }
 </style>
 </head>
-<body>
+<body data-sp-theme="">
 
 <div class="timer-container" id="container">
   <div class="glow" id="glow"></div>
@@ -217,10 +217,14 @@
 </div>
 
 <script>
-// ── URL Configuration ──
+// ── Configuration ──
+// Theme can be set via:
+//   1. OBS Custom CSS:  body { --sp-theme: neon; }
+//   2. URL parameter:   ?theme=neon  (requires non-local-file mode)
 const params = new URLSearchParams(window.location.search);
-const THEME = params.get('theme') || 'default';
-const SIZE = parseInt(params.get('size')) || 220;
+const cssTheme = getComputedStyle(document.body).getPropertyValue('--sp-theme').trim();
+const THEME = cssTheme || params.get('theme') || 'default';
+const SIZE = parseInt(params.get('size')) || parseInt(getComputedStyle(document.body).getPropertyValue('--sp-size')) || 220;
 const SHOW_STATS = params.get('showStats') !== 'false';
 const SHOW_NEXT = params.get('showNext') !== 'false';
 const SHOW_CHAT = params.get('showChat') === 'true';

@@ -82,7 +82,7 @@ Hit your Start hotkey. Watch the magic.
 |-------|-------------|
 | [Getting Started](docs/getting-started.md) | Zero-to-hero setup in ~10 minutes |
 | [Automation Guide](docs/automation-guide.md) | Backgrounds, music, volume ducking, mic, filters, chapters |
-| [Overlay Customization](docs/overlay-customization.md) | Themes, colors, sizes, URL parameters |
+| [Overlay Customization](docs/overlay-customization.md) | Themes, colors, sizes via OBS Custom CSS |
 | [Mobile Remote](docs/mobile-remote.md) | Control from your phone |
 | [Integrations](docs/integrations.md) | Nightbot, Stream Deck, custom tools |
 | [FAQ & Troubleshooting](docs/faq.md) | 30+ issues organized by category |

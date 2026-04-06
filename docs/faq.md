@@ -31,6 +31,7 @@ Common issues and their solutions, organized by category.
 - Resume restores the exact saved timer value and progress position; it does not reset the segment back to the beginning.
 - If the resume snapshot is missing or corrupted, the session cannot be restored.
 
+
 ### OBS freezes / "Not Responding" when session transitions
 
 - SessionPulse no longer switches OBS scenes automatically.
@@ -51,13 +52,25 @@ Common issues and their solutions, organized by category.
 ### Overlay is too big or too small
 
 - Change the **Width** and **Height** in Browser Source properties to match your desired size.
-- Or use the `?size=` URL parameter: `timer_overlay.html?size=300`
+- Or set `--sp-size` in the Custom CSS field: `body { --sp-size: 300; }` and update Width/Height to match.
 - You can also resize the source directly in the OBS preview by dragging the corners.
 
 ### Overlay colors are wrong
 
-- Custom colors use hex codes (with or without `#`): `?color_focus=22c55e` or `?color_focus=#22c55e`
-- Parameter names: `color_focus`, `color_short_break`, `color_long_break`, `color_stopwatch`, `color_countdown`
+Override session colors in the Browser Source **Custom CSS** field:
+```css
+body { --focus-color: #ec4899; --short-break-color: #06b6d4; }
+```
+See [Overlay Customization](overlay-customization.md) for all available color properties.
+
+### Why can't I use URL parameters like `?theme=neon`?
+
+OBS's "Local File" mode strips query parameters — it only accepts a raw file path. Using `file:///` URLs as a workaround breaks the overlay because OBS's browser engine blocks `fetch()` from `file://` origins.
+
+**Use Custom CSS instead** — it's the OBS-native way and works perfectly with Local File mode:
+```css
+body { --sp-theme: neon; }
+```
 
 ### Overlay doesn't update / is frozen
 

@@ -161,8 +161,12 @@
 
 <script>
 const POLL_INTERVAL = 750;
+// Position can be set via:
+//   1. OBS Custom CSS:  body { --sp-position: bottom; }
+//   2. URL parameter:   ?position=bottom  (requires non-local-file mode)
 const params = new URLSearchParams(window.location.search);
-const position = params.get('position') || 'top';
+const cssPosition = getComputedStyle(document.body).getPropertyValue('--sp-position').trim();
+const position = cssPosition || params.get('position') || 'top';
 
 const bar = document.getElementById('bar');
 const sessionIcon = document.getElementById('sessionIcon');
