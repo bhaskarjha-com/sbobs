@@ -1051,6 +1051,19 @@ update_background_media = function()
             end
 
             obs.obs_data_release(settings)
+
+            -- Re-apply canvas fit in case this source was added without bounds
+            if type(obs.obs_frontend_get_current_scene) == "function" then
+                local scene_source = obs.obs_frontend_get_current_scene()
+                if scene_source then
+                    local scene = obs.obs_scene_from_source(scene_source)
+                    if scene then
+                        fit_source_to_canvas(scene, background_media_source)
+                    end
+                    obs.obs_source_release(scene_source)
+                end
+            end
+
             if source_mode == "image" then
                 log("Background image updated for " .. session_type)
             elseif source_mode == "video" then
@@ -2707,6 +2720,40 @@ function add_source_obj_to_scene(scene, source, x, y)
     end
 end
 
+-- Apply "cover" scaling to a scene item so it fills the OBS canvas
+-- regardless of the source's native resolution. Uses OBS_BOUNDS_SCALE_OUTER
+-- which scales up/down maintaining aspect ratio and crops the excess.
+function fit_source_to_canvas(scene, source_name)
+    if not scene or not source_name or source_name == "" then return end
+
+    local item = obs.obs_scene_find_source(scene, source_name)
+    if not item then return end
+
+    -- Get canvas dimensions
+    local ovi = obs.obs_video_info()
+    if not obs.obs_get_video_info(ovi) then return end
+
+    local canvas_w = ovi.base_width
+    local canvas_h = ovi.base_height
+    if canvas_w == 0 or canvas_h == 0 then return end
+
+    -- Position at origin
+    local pos = obs.vec2()
+    pos.x = 0
+    pos.y = 0
+    obs.obs_sceneitem_set_pos(item, pos)
+
+    -- Set bounds to canvas size with SCALE_OUTER (cover mode)
+    local bounds = obs.vec2()
+    bounds.x = canvas_w
+    bounds.y = canvas_h
+    obs.obs_sceneitem_set_bounds_type(item, obs.OBS_BOUNDS_SCALE_OUTER)
+    obs.obs_sceneitem_set_bounds(item, bounds)
+
+    -- Center the crop by setting alignment to center
+    obs.obs_sceneitem_set_bounds_alignment(item, 0)  -- 0 = center
+end
+
 function remove_source_obj_from_scene(scene, source_name)
     if not scene or not source_name or source_name == "" then return false end
     local item = obs.obs_scene_find_source(scene, source_name)
@@ -2747,6 +2794,9 @@ function populate_scene(scene, source_list, overlay_source, background_sources, 
         for _, source in ipairs(background_sources) do
             if source then
                 add_source_obj_to_scene(scene, source, 0, 0)
+                -- Auto-fit to canvas ("cover" mode) so any resolution fills the canvas
+                local name = obs.obs_source_get_name(source)
+                fit_source_to_canvas(scene, name)
             end
         end
     end
