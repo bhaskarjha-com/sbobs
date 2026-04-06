@@ -46,13 +46,21 @@ All properties are optional. Add them inside `body { }` in the Custom CSS field:
 
 | Property | Default | Description |
 |----------|---------|-------------|
-| `--sp-ring-stroke` | `8` | Ring stroke width (lower = thinner) |
-| `--sp-ring-filter` | `none` | SVG filter on the ring (e.g. `drop-shadow(...)`) |
-| `--sp-glow-filter` | `blur(30px)` | Filter on the background glow |
+| `--sp-ring-stroke` | `14` | Ring stroke width |
+| `--sp-ring-filter` | `drop-shadow(...)` | SVG filter on the ring |
+| `--sp-glow-filter` | `blur(40px)` | Filter on the background glow |
 | `--sp-glow-opacity` | `1` | Glow opacity when active (`0` to hide) |
-| `--sp-time-size` | `2.8rem` | Timer text font size |
+| `--sp-time-size` | `5.4rem` | Timer text font size |
 | `--sp-time-weight` | `700` | Timer text font weight |
+| `--sp-time-stroke` | `0.5px` | Timer text outline for readability |
+| `--sp-label-size` | `1.3rem` | Session label font size |
+| `--sp-stats-size` | `1rem` | Stats text font size |
 | `--sp-glass-display` | `none` | Set to `block` to show frosted glass circle |
+| `--sp-tracker-stroke` | `4` | Session tracker segment thickness |
+| `--sp-next-display` | `flex` | Set to `none` to hide the "Next" pill |
+| `--sp-backdrop-bg` | dark radial | Backdrop center color |
+| `--sp-backdrop-bg-edge` | darker radial | Backdrop edge color |
+| `--sp-backdrop-blur` | `24px` | Backdrop blur strength |
 
 You can mix and match — for example, neon ring with glassmorphism glass:
 ```css
@@ -84,14 +92,16 @@ body {
 | `--stopwatch-color` | `#f59e0b` (amber) | Stopwatch |
 | `--countdown-color` | `#f97316` (orange) | Countdown |
 
-### Size Recommendations
+### Size & Resolution
 
-| Stream Resolution | Ring Size | Width/Height Setting |
-|------------------|-----------|---------------------|
-| 1080p (1920×1080) | 180–220 | 220×220 |
-| 1440p (2560×1440) | 250–300 | 300×300 |
-| 4K (3840×2160) | 350–400 | 400×400 |
-| Small corner widget | 120–150 | 150×150 |
+The overlay renders at **400×400** by default for maximum sharpness. In OBS, resize using **Edit Transform** (right-click → Transform → Edit Transform) to scale it down. This gives retina-quality crispness at any display size.
+
+| Use Case | Browser Source Size | OBS Display Size |
+|----------|-------------------|-----------------|
+| Corner widget | 400×400 (default) | Scale to ~180px via transform |
+| Study stream (prominent) | 400×400 | Scale to ~280px |
+| Full-screen overlay | 600×600 | Full canvas or large |
+| Small/gaming | 400×400 | Scale to ~120px |
 
 ### Placement Tips
 
