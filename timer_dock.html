@@ -132,7 +132,7 @@
 
   .timer-section {
     text-align: center;
-    padding: 14px 0 10px;
+    padding: 8px 0 6px;
   }
 
   .session-badge {
@@ -175,8 +175,8 @@
   /* Control Buttons */
   .controls {
     display: flex;
-    gap: 4px;
-    margin: 10px 0;
+    gap: 3px;
+    margin: 6px 0 3px;
     flex-wrap: wrap;
   }
 
@@ -187,8 +187,8 @@
     border: 1px solid var(--border);
     color: var(--text-secondary);
     border-radius: 6px;
-    padding: 7px 2px;
-    font-size: 0.65rem;
+    padding: 6px 2px;
+    font-size: 0.62rem;
     font-family: inherit;
     font-weight: 500;
     cursor: pointer;
@@ -196,7 +196,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 3px;
+    gap: 2px;
     white-space: nowrap;
   }
   .ctrl-btn:hover { background: var(--surface-hover); color: var(--text-primary); }
@@ -222,16 +222,29 @@
 
 .controls-row2 {
   display: flex;
-  gap: 4px;
-  margin-bottom: 10px;
+  gap: 3px;
+  margin-bottom: 4px;
+}
+.controls-row2 .ctrl-btn {
+  padding: 4px 2px;
+  font-size: 0.55rem;
+}
+.controls-row2 .ctrl-btn .icon {
+  font-size: 0.7rem;
 }
 
+  .progress-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 2px;
+  }
   .progress-track {
-    height: 4px;
+    height: 6px;
     background: var(--surface);
     border-radius: 99px;
-    margin: 0 0 8px;
     overflow: hidden;
+    flex: 1;
   }
 
   .progress-fill {
@@ -251,106 +264,128 @@
 
   .transition-msg {
     text-align: center;
-    font-size: 0.72rem;
+    font-size: 0.68rem;
     font-weight: 500;
     color: var(--text-secondary);
-    padding: 4px 0;
-    min-height: 20px;
+    padding: 2px 0;
+    min-height: 0;
     opacity: 0;
     transition: opacity 0.3s;
   }
-  .transition-msg.visible { opacity: 1; }
+  .transition-msg.visible { opacity: 1; min-height: 18px; }
 
   .break-suggestion {
     text-align: center;
-    font-size: 0.65rem;
-    font-weight: 500;
+    font-size: 0.58rem;
     color: var(--text-muted);
     font-style: italic;
-    min-height: 16px;
-    margin-bottom: 4px;
+    padding: 2px 0;
+    min-height: 0;
   }
 
-  .stats-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 6px;
-    margin-top: 8px;
-    padding-top: 10px;
-    border-top: 1px solid var(--border);
-  }
-
-  .stat-card {
-    background: var(--surface);
-    border-radius: 8px;
-    padding: 8px 10px;
-    text-align: center;
-  }
-
-  .stat-value {
-    font-size: 1.1rem;
-    font-weight: 700;
-    color: var(--text-primary);
-    font-variant-numeric: tabular-nums;
-  }
-
-  .stat-label {
-    font-size: 0.55rem;
-    font-weight: 500;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    color: var(--text-muted);
-    margin-top: 2px;
-  }
-
-  .stat-card.full { grid-column: 1 / -1; }
-
-  .chat-copy {
-    margin-top: 6px;
-    padding: 6px 8px;
+  .stats-compact {
+    margin-top: 4px;
+    padding: 7px 10px;
     background: var(--surface);
     border-radius: 6px;
-    font-size: 0.6rem;
+    font-size: 0.62rem;
+    color: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
+    line-height: 1.7;
+  }
+  .stats-line {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 2px;
+  }
+  .stats-line + .stats-line {
+    border-top: 1px solid var(--border);
+    padding-top: 4px;
+    margin-top: 4px;
+  }
+  .stat-val {
+    font-weight: 700;
+    color: var(--text-primary);
+  }
+  .stat-sep {
+    color: var(--text-muted);
+    margin: 0 4px;
+    opacity: 0.5;
+  }
+
+  .chat-copy {
+    margin-top: 4px;
+    padding: 4px 8px;
+    background: var(--surface);
+    border-radius: 6px;
+    font-size: 0.55rem;
     color: var(--text-muted);
     display: flex;
     align-items: center;
     justify-content: space-between;
     cursor: pointer;
     transition: background 0.15s;
-    min-height: 28px;
+    min-height: 22px;
   }
   .chat-copy:hover { background: var(--surface-hover); }
   .chat-copy .label { font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px; }
-  .chat-copy .value { color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+  .chat-copy .value { color: var(--text-secondary); font-variant-numeric: tabular-nums; font-size: 0.52rem; }
   .chat-copy.copied { background: rgba(34, 197, 94, 0.15); }
   .chat-copy.copied .label { color: var(--focus-color); }
 
-  .status-editor {
-    margin-top: 8px;
-    padding: 10px;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-  }
-
-  .status-editor-head {
+  /* Collapsible sections */
+  .collapsible-toggle {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 8px;
-    margin-bottom: 8px;
-  }
-
-  .status-editor-title {
-    font-size: 0.58rem;
+    width: 100%;
+    margin-top: 4px;
+    padding: 5px 8px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text-secondary);
+    font: inherit;
+    font-size: 0.55rem;
     font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 1px;
-    color: var(--text-secondary);
+    letter-spacing: 0.8px;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .collapsible-toggle:hover { background: var(--surface-hover); }
+  .collapsible-toggle .chevron {
+    transition: transform 0.2s;
+    font-size: 0.6rem;
+  }
+  .collapsible-toggle.open .chevron { transform: rotate(90deg); }
+  .collapsible-body {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.25s ease;
+  }
+  .collapsible-body.open {
+    max-height: 400px;
+  }
+  .collapsible-body-inner {
+    padding: 8px 0 0;
   }
 
-  .status-editor-meta {
-    font-size: 0.55rem;
+  .status-editor {
+    margin-top: 0;
+    padding: 0;
+    background: none;
+    border: none;
+    border-radius: 0;
+  }
+
+  .status-editor-head {
+    display: none;
+  }
+
+  .status-editor-meta-inline {
+    font-size: 0.5rem;
     color: var(--text-muted);
   }
 
@@ -358,55 +393,56 @@
   .status-editor-duration {
     width: 100%;
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: 6px;
     background: rgba(255, 255, 255, 0.04);
     color: var(--text-primary);
-    padding: 8px 10px;
+    padding: 6px 8px;
     font: inherit;
+    font-size: 0.58rem;
   }
 
   .status-editor-input {
-    min-height: 62px;
+    min-height: 44px;
     resize: vertical;
-    margin-bottom: 8px;
+    margin-bottom: 6px;
   }
 
   .status-editor-row {
     display: flex;
     align-items: center;
-    gap: 8px;
-    margin-bottom: 8px;
+    gap: 6px;
+    margin-bottom: 6px;
   }
 
   .status-editor-label {
-    min-width: 78px;
-    font-size: 0.55rem;
+    min-width: 52px;
+    font-size: 0.5rem;
     color: var(--text-secondary);
     text-transform: uppercase;
-    letter-spacing: 0.8px;
+    letter-spacing: 0.5px;
   }
 
   .status-editor-help,
   .status-editor-feedback {
-    font-size: 0.55rem;
+    font-size: 0.48rem;
     color: var(--text-muted);
   }
 
   .status-editor-actions {
     display: flex;
-    gap: 6px;
-    margin: 8px 0 6px;
+    gap: 4px;
+    margin: 6px 0 4px;
   }
 
   .status-editor-btn {
     flex: 1;
     border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 7px 10px;
+    border-radius: 6px;
+    padding: 5px 8px;
     background: rgba(255, 255, 255, 0.04);
     color: var(--text-primary);
     font: inherit;
-    font-size: 0.62rem;
+    font-size: 0.55rem;
     font-weight: 600;
     cursor: pointer;
   }
@@ -431,11 +467,11 @@
   }
 
   .footer {
-    margin-top: 10px;
-    padding-top: 8px;
+    margin-top: 6px;
+    padding-top: 4px;
     border-top: 1px solid var(--border);
     text-align: center;
-    font-size: 0.55rem;
+    font-size: 0.48rem;
     color: var(--text-muted);
   }
 </style>
@@ -491,37 +527,40 @@
   </button>
 </div>
 
-<div class="progress-track">
-  <div class="progress-fill idle" id="progressFill"></div>
+<div class="progress-row">
+  <div class="progress-track">
+    <div class="progress-fill idle" id="progressFill"></div>
+  </div>
 </div>
-
 <div class="break-suggestion" id="suggestion"></div>
 <div class="transition-msg" id="transition"></div>
 
-<div class="stats-grid">
-  <div class="stat-card">
-    <div class="stat-value" id="sessions">0/0</div>
-    <div class="stat-label">Sessions</div>
+<div class="stats-compact">
+  <div class="stats-line" id="statsLine1">
+    <span><span class="stat-val" id="sessions">0/0</span> sessions</span>
+    <span class="stat-sep">·</span>
+    <span><span class="stat-val" id="focusTime">0m</span> focus</span>
+    <span class="stat-sep">·</span>
+    <span><span class="stat-val" id="elapsed">0%</span></span>
   </div>
-  <div class="stat-card">
-    <div class="stat-value" id="focusTime">0m</div>
-    <div class="stat-label">Focus Time</div>
-  </div>
-  <div class="stat-card">
-    <div class="stat-value" id="cycle">0</div>
-    <div class="stat-label">Cycle</div>
-  </div>
-  <div class="stat-card">
-    <div class="stat-value" id="elapsed">0%</div>
-    <div class="stat-label">Progress</div>
-  </div>
-  <div class="stat-card full">
-    <div class="stat-value" id="streamTime">--</div>
-    <div class="stat-label">Stream Duration</div>
+  <div class="stats-line" id="statsLine2">
+    <span>Cycle <span class="stat-val" id="cycle">0</span></span>
+    <span class="stat-sep" id="streamSep" style="display:none">·</span>
+    <span id="streamItem" style="display:none">Stream <span class="stat-val" id="streamTime">--</span></span>
   </div>
 </div>
 
-<div class="chat-copy" id="chatCopy" title="Click to copy chat status">
+<div id="dailyGoalRow" style="display:none; margin-top:4px;">
+  <div style="display:flex; justify-content:space-between; font-size:0.5rem; color:#94a3b8; margin-bottom:2px; padding:0 2px;">
+    <span id="dailyGoalText">Daily Goal</span>
+    <span id="dailyGoalPct">0%</span>
+  </div>
+  <div class="progress-track" style="height:4px; flex:unset;">
+    <div class="progress-fill" id="dailyGoalFill" style="width:0%; transition:width 0.5s;"></div>
+  </div>
+</div>
+
+<div class="chat-copy" id="chatCopy" style="display:none" title="Click to copy chat status">
   <span class="label">Chat</span>
   <span class="value" id="chatStatus">--</span>
 </div>
@@ -536,31 +575,24 @@
   <span class="value" id="statusMessage">--</span>
 </div>
 
-<div class="status-editor" id="statusEditor">
-  <div class="status-editor-head">
-    <span class="status-editor-title">SP Status</span>
-    <span class="status-editor-meta" id="statusEditorMeta">Inactive</span>
-  </div>
-  <textarea class="status-editor-input" id="statusEditorMessage" placeholder="AFK for 5 minutes. Timer keeps running." maxlength="240"></textarea>
-  <div class="status-editor-row">
-    <span class="status-editor-label">Minutes</span>
-    <input class="status-editor-duration" id="statusEditorDuration" type="number" min="0" max="10080" step="1" value="0">
-  </div>
-  <div class="status-editor-help">Set to 0 to keep the message visible until you clear it.</div>
-  <div class="status-editor-actions">
-    <button class="status-editor-btn primary" id="btnStatusApply" type="button">Apply Status</button>
-    <button class="status-editor-btn danger" id="btnStatusClear" type="button">Clear Status</button>
-  </div>
-  <div class="status-editor-feedback" id="statusEditorFeedback"></div>
-</div>
-
-<div id="dailyGoalRow" style="display:none; padding:6px 16px;">
-  <div style="display:flex; justify-content:space-between; font-size:11px; color:#94a3b8; margin-bottom:4px;">
-    <span id="dailyGoalText">Daily Goal</span>
-    <span id="dailyGoalPct">0%</span>
-  </div>
-  <div class="progress-track" style="height:6px;">
-    <div class="progress-fill" id="dailyGoalFill" style="width:0%; transition:width 0.5s;"></div>
+<button class="collapsible-toggle" id="statusToggle" type="button">
+  <span>SP Status <span class="status-editor-meta-inline" id="statusEditorMeta">Inactive</span></span>
+  <span class="chevron">▸</span>
+</button>
+<div class="collapsible-body" id="statusBody">
+  <div class="collapsible-body-inner">
+    <div class="status-editor" id="statusEditor">
+      <textarea class="status-editor-input" id="statusEditorMessage" placeholder="AFK message..." maxlength="240"></textarea>
+      <div class="status-editor-row">
+        <span class="status-editor-label">Min</span>
+        <input class="status-editor-duration" id="statusEditorDuration" type="number" min="0" max="10080" step="1" value="0">
+      </div>
+      <div class="status-editor-actions">
+        <button class="status-editor-btn primary" id="btnStatusApply" type="button">Apply</button>
+        <button class="status-editor-btn danger" id="btnStatusClear" type="button">Clear</button>
+      </div>
+      <div class="status-editor-feedback" id="statusEditorFeedback"></div>
+    </div>
   </div>
 </div>
 
@@ -1440,6 +1472,19 @@ btnStatusClear.addEventListener('click', () => {
   sendStatusCommand('clear_status', '', 0);
 });
 
+// ── Collapsible SP Status Toggle ──
+const statusToggle = document.getElementById('statusToggle');
+const statusBody = document.getElementById('statusBody');
+if (localStorage.getItem('sp_status_open') === 'true') {
+  statusToggle.classList.add('open');
+  statusBody.classList.add('open');
+}
+statusToggle.addEventListener('click', () => {
+  const isOpen = statusBody.classList.toggle('open');
+  statusToggle.classList.toggle('open', isOpen);
+  localStorage.setItem('sp_status_open', isOpen ? 'true' : 'false');
+});
+
 // ── Chat Copy ──
 chatCopyEl.addEventListener('click', () => {
   const text = chatStatusEl.textContent;
@@ -1492,8 +1537,10 @@ function update(state) {
     cycleEl.textContent = '0';
     elapsedEl.textContent = '0%';
     streamTimeEl.textContent = '--';
+    document.getElementById('streamItem').style.display = 'none';
     modeBadge.textContent = '--';
     chatStatusEl.textContent = '--';
+    chatCopyEl.style.display = 'none';
     document.getElementById('statusRow').style.display = 'none';
     btnResumePrevious.disabled = !wsConnected || controlActionInFlight;
     btnStartPauseLabel.textContent = 'Start';
@@ -1632,14 +1679,26 @@ function update(state) {
   elapsedEl.textContent = (progress_percent != null ? progress_percent : Math.round(progress)) + '%';
 
   // Stream duration
+  const streamItem = document.getElementById('streamItem');
+  const streamSep = document.getElementById('streamSep');
   if (stream_duration && stream_duration > 0) {
     streamTimeEl.textContent = formatDuration(stream_duration);
+    streamItem.style.display = '';
+    streamSep.style.display = '';
   } else {
     streamTimeEl.textContent = '--';
+    streamItem.style.display = 'none';
+    streamSep.style.display = 'none';
   }
 
   // Chat status line
-  chatStatusEl.textContent = chat_status_line || '--';
+  if (chat_status_line && chat_status_line !== '--') {
+    chatStatusEl.textContent = chat_status_line;
+    chatCopyEl.style.display = '';
+  } else {
+    chatStatusEl.textContent = '--';
+    chatCopyEl.style.display = 'none';
+  }
 
   // Session label
   const labelRow = document.getElementById('labelRow');
