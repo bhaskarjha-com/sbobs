@@ -155,25 +155,33 @@
 
   /* ── Session counter ── */
   .session-counter {
-    font-size: var(--sp-bar-counter-size, 0.82rem);
-    font-weight: 600;
-    color: var(--text-muted);
+    font-size: var(--sp-bar-counter-size, 0.88rem);
+    font-weight: 700;
+    color: var(--text-secondary);
     white-space: nowrap;
     letter-spacing: 0.5px;
     text-shadow: 0 1px 6px rgba(0, 0, 0, 0.4);
+    margin-left: auto;
+  }
+
+  /* ── Divider ── */
+  .bar-divider {
+    width: 1px;
+    height: 16px;
+    background: rgba(255, 255, 255, 0.15);
+    flex-shrink: 0;
   }
 
   /* ── Next-up info ── */
   .next-info {
-    font-size: var(--sp-bar-next-size, 0.78rem);
+    font-size: var(--sp-bar-next-size, 0.82rem);
     font-weight: 600;
-    color: var(--text-muted);
+    color: var(--text-secondary);
     white-space: nowrap;
     letter-spacing: 0.4px;
     text-shadow: 0 1px 6px rgba(0, 0, 0, 0.4);
     opacity: 0;
     transition: opacity 0.4s ease;
-    margin-left: auto;
   }
   .next-info.visible { opacity: 1; }
 
@@ -212,6 +220,7 @@
     <div class="progress-fill" id="progressFill"></div>
   </div>
   <div class="session-counter" id="sessionCounter"></div>
+  <div class="bar-divider" id="barDivider" style="display:none"></div>
   <div class="next-info" id="nextInfo"></div>
 </div>
 
@@ -227,6 +236,7 @@ const sessionLabel   = document.getElementById('sessionLabel');
 const timeText       = document.getElementById('timeText');
 const progressFill   = document.getElementById('progressFill');
 const sessionCounter = document.getElementById('sessionCounter');
+const barDivider     = document.getElementById('barDivider');
 const nextInfo       = document.getElementById('nextInfo');
 
 // Position: via CSS var or URL param
@@ -399,6 +409,11 @@ function update(state) {
   } else {
     nextInfo.classList.remove('visible');
   }
+
+  // Divider: show only when both counter and next-info have content
+  const hasCounter = sessionCounter.textContent !== '';
+  const hasNext = nextInfo.classList.contains('visible');
+  barDivider.style.display = (hasCounter && hasNext) ? 'block' : 'none';
 }
 
 let lastState = null;
