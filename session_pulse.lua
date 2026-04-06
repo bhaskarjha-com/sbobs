@@ -163,6 +163,7 @@ local progress_bar_source = ""
 local background_media_source = ""
 local background_music_source_name = ""
 local alert_source_name = ""
+local pending_background_refit = nil  -- { source_name, epoch } deferred canvas fit
 local status_state = {
     source_name = "",
     control_source_name = "SP Control",
@@ -1052,7 +1053,10 @@ update_background_media = function()
 
             obs.obs_data_release(settings)
 
-            -- Re-apply canvas fit in case this source was added without bounds
+            -- Apply canvas fit immediately + schedule a deferred re-fit.
+            -- The immediate fit works when the source already has dimensions.
+            -- The deferred re-fit (500ms later via script_tick) handles the case
+            -- where OBS hasn't loaded the new image file yet (0×0 dimensions).
             if type(obs.obs_frontend_get_current_scene) == "function" then
                 local scene_source = obs.obs_frontend_get_current_scene()
                 if scene_source then
@@ -1063,6 +1067,8 @@ update_background_media = function()
                     obs.obs_source_release(scene_source)
                 end
             end
+            -- Schedule deferred re-fit for after OBS loads the new image
+            pending_background_refit = { source_name = background_media_source, epoch = os.clock() }
 
             if source_mode == "image" then
                 log("Background image updated for " .. session_type)
@@ -3773,6 +3779,23 @@ end
 ------------------------------------------------------------------------
 function script_tick(seconds)
     process_volume_fade(seconds)
+
+    -- Deferred background re-fit: apply canvas bounds after OBS has loaded the new image
+    if pending_background_refit and (os.clock() - pending_background_refit.epoch) >= 0.5 then
+        local refit = pending_background_refit
+        pending_background_refit = nil
+        if type(obs.obs_frontend_get_current_scene) == "function" then
+            local scene_source = obs.obs_frontend_get_current_scene()
+            if scene_source then
+                local scene = obs.obs_scene_from_source(scene_source)
+                if scene then
+                    fit_source_to_canvas(scene, refit.source_name)
+                end
+                obs.obs_source_release(scene_source)
+            end
+        end
+    end
+
     if process_overlay_control_command() then return end
     local controls_processed = process_pending_control_actions()
     if controls_processed > 0 then return end
