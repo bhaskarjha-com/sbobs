@@ -2,11 +2,9 @@
 
 SessionPulse includes two overlay styles — a **circular ring** and a **horizontal bar** — both highly customizable via the **Custom CSS** field in OBS Browser Source properties.
 
-> **Why Custom CSS instead of URL parameters?**
-> OBS's "Local File" mode doesn't support URL query parameters (`?theme=neon`).
-> Using `file:///` URLs as a workaround breaks the overlay because OBS's CEF browser
-> blocks `fetch()` requests from `file://` origins. The Custom CSS approach works
-> perfectly with Local File mode — no workarounds needed.
+> **How it works:** The overlay CSS uses `var(--sp-*, default)` references for all
+> theme-able properties. When you set these properties in OBS Custom CSS, they
+> override the defaults through the native CSS cascade — no JavaScript needed.
 
 ---
 
@@ -20,61 +18,58 @@ SessionPulse includes two overlay styles — a **circular ring** and a **horizon
 
 ### Themes
 
-SessionPulse ships with 4 built-in themes. Set them in the **Custom CSS** field:
+SessionPulse ships with 3 preset themes. Copy-paste the full Custom CSS line into the **Custom CSS** field:
 
-| Theme | Custom CSS | Look |
-|-------|-----------|------|
-| `default` | *(no extra CSS needed)* | Clean green ring, subtle glow |
-| `neon` | `body { --sp-theme: neon; }` | Bright glow, high contrast |
-| `minimal` | `body { --sp-theme: minimal; }` | No glow, thin ring, muted |
-| `glassmorphism` | `body { --sp-theme: glassmorphism; }` | Frosted glass, blur effect |
-
-**How to set a theme:**
-
-1. Double-click the SP Overlay source in your scene
-2. Find the **Custom CSS** field at the bottom of the properties
-3. Add the theme variable alongside the existing CSS:
-
+**Neon** — Bright glow, high contrast, thinner ring:
 ```css
-body { background-color: rgba(0, 0, 0, 0); margin: 0px auto; overflow: hidden; --sp-theme: neon; }
+body { background-color: rgba(0, 0, 0, 0); margin: 0px auto; overflow: hidden; --sp-ring-stroke: 6; --sp-ring-filter: drop-shadow(0 0 8px currentColor); --sp-glow-filter: blur(40px); }
 ```
 
-### Custom CSS Properties Reference
+**Minimal** — No glow, thin ring, light font:
+```css
+body { background-color: rgba(0, 0, 0, 0); margin: 0px auto; overflow: hidden; --sp-glow-opacity: 0; --sp-ring-stroke: 4; --sp-time-weight: 300; --sp-time-size: 2.4rem; }
+```
+
+**Glassmorphism** — Frosted glass circle behind the ring:
+```css
+body { background-color: rgba(0, 0, 0, 0); margin: 0px auto; overflow: hidden; --sp-glass-display: block; }
+```
+
+**Default** — No extra properties needed, use the standard Custom CSS:
+```css
+body { background-color: rgba(0, 0, 0, 0); margin: 0px auto; overflow: hidden; }
+```
+
+### Theme Properties Reference
 
 All properties are optional. Add them inside `body { }` in the Custom CSS field:
 
+| Property | Default | Description |
+|----------|---------|-------------|
+| `--sp-ring-stroke` | `8` | Ring stroke width (lower = thinner) |
+| `--sp-ring-filter` | `none` | SVG filter on the ring (e.g. `drop-shadow(...)`) |
+| `--sp-glow-filter` | `blur(30px)` | Filter on the background glow |
+| `--sp-glow-opacity` | `1` | Glow opacity when active (`0` to hide) |
+| `--sp-time-size` | `2.8rem` | Timer text font size |
+| `--sp-time-weight` | `700` | Timer text font weight |
+| `--sp-glass-display` | `none` | Set to `block` to show frosted glass circle |
+
+You can mix and match — for example, neon ring with glassmorphism glass:
 ```css
-body {
-  background-color: rgba(0, 0, 0, 0);
-  margin: 0px auto;
-  overflow: hidden;
-  --sp-theme: neon;
-  --sp-size: 300;
-}
+body { background-color: rgba(0, 0, 0, 0); margin: 0px auto; overflow: hidden; --sp-ring-stroke: 6; --sp-ring-filter: drop-shadow(0 0 8px currentColor); --sp-glass-display: block; }
 ```
-
-| Property | Default | Description | Example |
-|----------|---------|-------------|---------|
-| `--sp-theme` | `default` | Visual theme | `--sp-theme: neon;` |
-| `--sp-size` | `220` | Ring diameter in pixels | `--sp-size: 300;` |
-
-> **Tip:** When changing `--sp-size`, also update the Browser Source **Width** and **Height** to match.
 
 ### Custom Colors
 
-Override the default session colors by adding CSS custom properties in the Custom CSS field:
+Override the default session colors by adding CSS custom properties:
 
 ```css
 body {
-  background-color: rgba(0, 0, 0, 0);
-  margin: 0px auto;
-  overflow: hidden;
+  background-color: rgba(0, 0, 0, 0); margin: 0px auto; overflow: hidden;
   --focus-color: #ec4899;
   --focus-glow: rgba(236, 72, 153, 0.3);
   --short-break-color: #06b6d4;
   --short-break-glow: rgba(6, 182, 212, 0.3);
-  --long-break-color: #8b5cf6;
-  --long-break-glow: rgba(139, 92, 246, 0.3);
 }
 ```
 
@@ -125,10 +120,6 @@ By default the bar slides in from the top. To slide from the bottom, add to Cust
 body { --sp-position: bottom; }
 ```
 
-| Property | Default | Description |
-|----------|---------|-------------|
-| `--sp-position` | `top` | `top` or `bottom` — affects slide animation direction |
-
 ### Behavior
 
 - **Auto-hides** when the timer is idle (slides out)
@@ -142,25 +133,25 @@ body { --sp-position: bottom; }
 
 ### Gaming Stream
 ```css
-body { background-color: rgba(0,0,0,0); margin: 0px auto; overflow: hidden; --sp-theme: neon; --sp-size: 150; }
+body { background-color: rgba(0,0,0,0); margin: 0px auto; overflow: hidden; --sp-ring-stroke: 6; --sp-ring-filter: drop-shadow(0 0 8px currentColor); --sp-glow-filter: blur(40px); }
 ```
 Small, glowing, unobtrusive. Set Browser Source to 150×150.
 
 ### Study With Me
 ```css
-body { background-color: rgba(0,0,0,0); margin: 0px auto; overflow: hidden; --sp-size: 250; }
+body { background-color: rgba(0,0,0,0); margin: 0px auto; overflow: hidden; }
 ```
-Larger, clean, readable. Set Browser Source to 250×250.
+Default theme. Larger, clean, readable. Set Browser Source to 250×250.
 
 ### Professional / Podcast
 ```css
-body { background-color: rgba(0,0,0,0); margin: 0px auto; overflow: hidden; --sp-theme: minimal; --sp-size: 180; --focus-color: #6366f1; --focus-glow: rgba(99, 102, 241, 0.3); }
+body { background-color: rgba(0,0,0,0); margin: 0px auto; overflow: hidden; --sp-glow-opacity: 0; --sp-ring-stroke: 4; --sp-time-weight: 300; --sp-time-size: 2.4rem; --focus-color: #6366f1; }
 ```
 Muted, branded colors, thin ring. Set Browser Source to 180×180.
 
 ### Aesthetic / Lofi
 ```css
-body { background-color: rgba(0,0,0,0); margin: 0px auto; overflow: hidden; --sp-theme: glassmorphism; --sp-size: 280; --focus-color: #f472b6; --focus-glow: rgba(244, 114, 182, 0.3); }
+body { background-color: rgba(0,0,0,0); margin: 0px auto; overflow: hidden; --sp-glass-display: block; --focus-color: #f472b6; --focus-glow: rgba(244, 114, 182, 0.3); }
 ```
 Frosted glass, soft pink. Set Browser Source to 280×280.
 

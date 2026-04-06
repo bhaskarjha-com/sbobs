@@ -53,11 +53,11 @@
     width: 70%;
     height: 70%;
     border-radius: 50%;
-    filter: blur(30px);
+    filter: var(--sp-glow-filter, blur(30px));
     opacity: 0;
     transition: opacity 0.8s ease, background 0.8s ease;
   }
-  .glow.active { opacity: 1; }
+  .glow.active { opacity: var(--sp-glow-opacity, 1); }
 
   .ring-svg {
     position: absolute;
@@ -69,15 +69,16 @@
   .ring-bg {
     fill: none;
     stroke: var(--ring-bg);
-    stroke-width: var(--stroke);
+    stroke-width: var(--sp-ring-stroke, var(--stroke));
   }
 
   .ring-progress {
     fill: none;
     stroke: var(--idle-color);
-    stroke-width: var(--stroke);
+    stroke-width: var(--sp-ring-stroke, var(--stroke));
     stroke-linecap: round;
     transition: stroke-dashoffset 0.8s ease, stroke 0.6s ease;
+    filter: var(--sp-ring-filter, none);
   }
 
   .center {
@@ -91,8 +92,8 @@
   }
 
   .time {
-    font-size: 2.8rem;
-    font-weight: 700;
+    font-size: var(--sp-time-size, 2.8rem);
+    font-weight: var(--sp-time-weight, 700);
     color: var(--text-primary);
     letter-spacing: -1px;
     line-height: 1;
@@ -178,17 +179,10 @@
   .idle .time { opacity: 0.5; }
   .idle .session-label { opacity: 0.4; }
 
-  /* ── Themes ── */
-  body.theme-neon .ring-progress { stroke-width: 6; filter: drop-shadow(0 0 8px currentColor); }
-  body.theme-neon .glow { filter: blur(40px); }
-
-  body.theme-minimal .glow { display: none; }
-  body.theme-minimal .ring-bg { stroke-width: 4; }
-  body.theme-minimal .ring-progress { stroke-width: 4; }
-  body.theme-minimal .time { font-weight: 300; font-size: 2.4rem; }
-
-  body.theme-glassmorphism .timer-container::before {
+  /* ── Glassmorphism base (hidden unless --sp-glass-display is set) ── */
+  .timer-container::before {
     content: '';
+    display: var(--sp-glass-display, none);
     position: absolute;
     inset: 15%;
     border-radius: 50%;
@@ -196,6 +190,11 @@
     backdrop-filter: blur(10px);
     border: 1px solid rgba(255,255,255,0.08);
   }
+
+  /* ── Theme presets (JS class fallback for non-OBS browsers) ── */
+  body.theme-neon { --sp-ring-stroke: 6; --sp-ring-filter: drop-shadow(0 0 8px currentColor); --sp-glow-filter: blur(40px); }
+  body.theme-minimal { --sp-glow-opacity: 0; --sp-ring-stroke: 4; --sp-time-weight: 300; --sp-time-size: 2.4rem; }
+  body.theme-glassmorphism { --sp-glass-display: block; }
 </style>
 </head>
 <body data-sp-theme="">

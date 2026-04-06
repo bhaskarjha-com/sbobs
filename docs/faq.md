@@ -63,14 +63,13 @@ body { --focus-color: #ec4899; --short-break-color: #06b6d4; }
 ```
 See [Overlay Customization](overlay-customization.md) for all available color properties.
 
-### Why can't I use URL parameters like `?theme=neon`?
+### How do I change the overlay theme?
 
-OBS's "Local File" mode strips query parameters — it only accepts a raw file path. Using `file:///` URLs as a workaround breaks the overlay because OBS's browser engine blocks `fetch()` from `file://` origins.
-
-**Use Custom CSS instead** — it's the OBS-native way and works perfectly with Local File mode:
+Paste one of the theme presets into the Browser Source **Custom CSS** field. For example, the **Neon** theme:
 ```css
-body { --sp-theme: neon; }
+body { background-color: rgba(0, 0, 0, 0); margin: 0px auto; overflow: hidden; --sp-ring-stroke: 6; --sp-ring-filter: drop-shadow(0 0 8px currentColor); --sp-glow-filter: blur(40px); }
 ```
+See [Overlay Customization](overlay-customization.md) for all themes and properties.
 
 ### Overlay doesn't update / is frozen
 
