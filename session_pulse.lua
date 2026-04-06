@@ -1852,6 +1852,9 @@ function build_control_bridge_state_json()
 
     local completed_for_display = get_effective_completed_focus_sessions()
     local next_type = get_next_session_type()
+    local sessions_remaining = math.max(0, goal_sessions - completed_for_display)
+    local next_in = display_time
+    if is_overtime then next_in = 0 end
 
     local stream_dur = 0
     if stream_start_time > 0 then
@@ -1880,18 +1883,15 @@ function build_control_bridge_state_json()
         else
             chat_status = string.format("%s %s", session_type, format_time(display_time))
         end
-        if is_paused then
-            chat_status = chat_status .. " [Paused]"
-        end
+        if is_paused then chat_status = chat_status .. " [Paused]" end
     end
 
+    local elapsed_seconds = get_session_elapsed()
     local progress_pct = 0
     if total > 0 then
         progress_pct = math.min(100, math.floor(((total - display_time) / total) * 100))
     end
-    if is_overtime then
-        progress_pct = 100
-    end
+    if is_overtime then progress_pct = 100 end
 
     local ends_at = ""
     if is_running and not is_paused and not is_overtime and timer_mode ~= "stopwatch" then
@@ -1902,37 +1902,13 @@ function build_control_bridge_state_json()
     if status_state.active and status_state.current_message ~= "" then
         active_status_message = status_state.current_message
     end
+    
+    local d_f_s = (daily_focus_seconds_today or 0) + total_focus_seconds
+    local d_g_s = (daily_goal_minutes or 0) * 60
 
     return string.format(
-        '{"kind":"state","is_running":%s,"is_paused":%s,"resume_available":%s,"session_type":"%s","current_time":%d,"total_time":%d,"progress_percent":%d,"completed_focus_sessions":%d,"goal_sessions":%d,"total_focus_seconds":%d,"cycle_count":%d,"stream_duration":%d,"timer_mode":"%s","chat_status_line":"%s","status_active":%s,"status_message":"%s","status_until_epoch":%d,"is_overtime":%s,"overtime_seconds":%d,"next_session_type":"%s","break_suggestion":"%s","ends_at":"%s","show_transition":%s,"transition_message":"%s","custom_segment_name":"%s","custom_segment_index":%d,"custom_segment_count":%d,"timestamp":%d}',
-        tostring(is_running),
-        tostring(is_paused),
-        tostring(has_pending_resume),
-        json_escape(session_type),
-        display_time,
-        total,
-        progress_pct,
-        completed_for_display,
-        goal_sessions,
-        total_focus_seconds,
-        cycle_count,
-        stream_dur,
-        json_escape(timer_mode),
-        json_escape(chat_status),
-        tostring(status_state.active and active_status_message ~= ""),
-        json_escape(active_status_message),
-        status_state.until_epoch or 0,
-        tostring(is_overtime),
-        overtime_seconds or 0,
-        json_escape(next_type),
-        json_escape(suggestion_text),
-        json_escape(ends_at),
-        tostring(show_transition),
-        json_escape(transition_message),
-        json_escape(seg_name),
-        custom_segment_index or 1,
-        #custom_segments,
-        now
+        '{"kind":"state","version":"%s","timer_mode":"%s","is_running":%s,"is_paused":%s,"session_type":"%s","current_time":%d,"total_time":%d,"elapsed_seconds":%d,"progress_percent":%d,"ends_at":"%s","cycle_count":%d,"completed_focus_sessions":%d,"goal_sessions":%d,"total_focus_seconds":%d,"show_transition":%s,"transition_message":"%s","custom_segment_name":"%s","custom_segment_index":%d,"custom_segment_count":%d,"is_overtime":%s,"overtime_seconds":%d,"next_session_type":"%s","next_session_in":%d,"sessions_remaining":%d,"break_suggestion":"%s","stream_duration":%d,"chat_status_line":"%s","session_label":"%s","status_active":%s,"status_message":"%s","status_until_epoch":%d,"daily_focus_seconds":%d,"daily_goal_seconds":%d,"focus_streak":%d,"session_epoch":%d,"session_pause_total":%d,"session_target_duration":%d,"resume_available":%s,"timestamp":%d}',
+        json_escape(VERSION), json_escape(timer_mode), tostring(is_running), tostring(is_paused), json_escape(session_type), display_time, total, elapsed_seconds, progress_pct, json_escape(ends_at), cycle_count, completed_for_display, goal_sessions, total_focus_seconds, tostring(show_transition), json_escape(transition_message), json_escape(seg_name), custom_segment_index or 1, #custom_segments, tostring(is_overtime), overtime_seconds or 0, json_escape(next_type), next_in, sessions_remaining, json_escape(suggestion_text), stream_dur, json_escape(chat_status), json_escape(session_label or ""), tostring(status_state.active and active_status_message ~= ""), json_escape(active_status_message), status_state.until_epoch or 0, d_f_s, d_g_s, focus_streak or 0, session_epoch or 0, session_pause_total or 0, session_target_duration or 0, tostring(has_pending_resume), now
     )
 end
 
