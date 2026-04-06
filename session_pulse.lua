@@ -383,7 +383,12 @@ local function parse_custom_intervals(text)
     for segment in text:gmatch("([^,]+)") do
         local name, mins = segment:match("^%s*(.-)%s*:%s*(%d+)%s*$")
         if name and mins then
-            result[#result + 1] = { name = name, duration = tonumber(mins) * 60 }
+            local dur = tonumber(mins) * 60
+            if dur > 0 then
+                result[#result + 1] = { name = name, duration = dur }
+            else
+                log("Custom interval '" .. name .. "' skipped: duration must be > 0")
+            end
         end
     end
     -- Validation feedback in log
@@ -885,6 +890,13 @@ local function apply_saved_state(state)
             session_epoch = os.time() - saved_elapsed
             session_pause_total = 0
             session_target_duration = saved_total
+
+            local current_setting = get_duration_for_session(session_type)
+            if saved_total ~= current_setting and current_setting > 0 then
+                log("Note: Resumed session uses saved duration (" ..
+                    format_duration_human(saved_total) .. "), current setting is " ..
+                    format_duration_human(current_setting))
+            end
         end
 
         if is_paused then
@@ -1644,7 +1656,10 @@ local function check_warning_alerts(time_remaining)
     if is_overtime then return end
 
     -- 5-minute warning (flag-only: fires once when crossing the threshold)
-    if warning_5min_enabled and not warning_5min_fired and time_remaining <= 300 then
+    -- Guard: only fire if session is actually longer than 5 minutes,
+    -- otherwise the warning triggers immediately at session start.
+    if warning_5min_enabled and not warning_5min_fired
+       and time_remaining <= 300 and session_target_duration > 300 then
         warning_5min_fired = true
         if not has_pending_control_action("warning_alert") then
             queue_control_action("warning_alert", "timer")
@@ -1653,7 +1668,8 @@ local function check_warning_alerts(time_remaining)
     end
 
     -- 1-minute warning
-    if warning_1min_enabled and not warning_1min_fired and time_remaining <= 60 then
+    if warning_1min_enabled and not warning_1min_fired
+       and time_remaining <= 60 and session_target_duration > 60 then
         warning_1min_fired = true
         if not has_pending_control_action("warning_alert") then
             queue_control_action("warning_alert", "timer")
@@ -1665,7 +1681,8 @@ local function check_warning_alerts(time_remaining)
     if warning_break_end_enabled and not warning_break_end_fired
        and session_type ~= "Focus"
        and (timer_mode == "pomodoro" or timer_mode == "custom" or timer_mode == "countdown")
-       and time_remaining <= warning_break_end_seconds then
+       and time_remaining <= warning_break_end_seconds
+       and session_target_duration > warning_break_end_seconds then
         warning_break_end_fired = true
         if not has_pending_control_action("warning_alert") then
             queue_control_action("warning_alert", "timer")
@@ -3280,7 +3297,7 @@ function script_properties()
     -- ── Behavior ──
     obs.obs_properties_add_bool(props, "auto_start_next", "Auto-start Next Session / Loop")
     obs.obs_properties_add_bool(props, "show_progress_bar", "Show Progress Bar")
-    obs.obs_properties_add_bool(props, "enable_overtime", "Enable Overtime (negative timer)")
+    obs.obs_properties_add_bool(props, "enable_overtime", "Enable Overtime (counts past zero, pauses auto-start)")
     obs.obs_properties_add_int(props, "transition_display_time", "Transition Message Duration (sec)", 1, 10, 1)
     obs.obs_properties_add_int(props, "time_adjust_increment", "Time Adjust Increment (min)", 1, 30, 1)
     obs.obs_properties_add_text(props, "break_suggestions_text",
