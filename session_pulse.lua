@@ -2727,8 +2727,9 @@ function add_source_obj_to_scene(scene, source, x, y)
 end
 
 -- Apply "cover" scaling to a scene item so it fills the OBS canvas
--- regardless of the source's native resolution. Uses OBS_BOUNDS_SCALE_OUTER
--- which scales up/down maintaining aspect ratio and crops the excess.
+-- regardless of the source's native resolution. Uses manual scale
+-- calculation instead of bounds (more reliable across OBS versions).
+-- Scales to cover the full canvas, centering any overflow.
 function fit_source_to_canvas(scene, source_name)
     if not scene or not source_name or source_name == "" then return end
 
@@ -2744,21 +2745,43 @@ function fit_source_to_canvas(scene, source_name)
     local canvas_h = ovi.base_height
     if canvas_w == 0 or canvas_h == 0 then return end
 
-    -- Position at origin
+    -- Get the source's native dimensions
+    local source = obs.obs_sceneitem_get_source(item)
+    if not source then return end
+    local src_w = obs.obs_source_get_width(source)
+    local src_h = obs.obs_source_get_height(source)
+
+    -- If source hasn't loaded yet (0x0), skip — deferred re-fit will catch it
+    if src_w == 0 or src_h == 0 then
+        log("Fit deferred for '" .. source_name .. "' (source dimensions not yet available)")
+        return
+    end
+
+    -- Clear bounds (use raw scale instead)
+    local ok1, err1 = pcall(function()
+        obs.obs_sceneitem_set_bounds_type(item, 0)  -- 0 = OBS_BOUNDS_NONE
+    end)
+
+    -- Calculate scale factor for "cover" (fill canvas, crop overflow)
+    local scale_x = canvas_w / src_w
+    local scale_y = canvas_h / src_h
+    local factor = math.max(scale_x, scale_y)
+
+    -- Apply scale
+    local scale = obs.vec2()
+    scale.x = factor
+    scale.y = factor
+    obs.obs_sceneitem_set_scale(item, scale)
+
+    -- Center the source (offset for any overflow)
+    local scaled_w = src_w * factor
+    local scaled_h = src_h * factor
     local pos = obs.vec2()
-    pos.x = 0
-    pos.y = 0
+    pos.x = (canvas_w - scaled_w) / 2
+    pos.y = (canvas_h - scaled_h) / 2
     obs.obs_sceneitem_set_pos(item, pos)
 
-    -- Set bounds to canvas size with SCALE_OUTER (cover mode)
-    local bounds = obs.vec2()
-    bounds.x = canvas_w
-    bounds.y = canvas_h
-    obs.obs_sceneitem_set_bounds_type(item, obs.OBS_BOUNDS_SCALE_OUTER)
-    obs.obs_sceneitem_set_bounds(item, bounds)
-
-    -- Center the crop by setting alignment to center
-    obs.obs_sceneitem_set_bounds_alignment(item, 0)  -- 0 = center
+    log("Fitted '" .. source_name .. "' (" .. src_w .. "x" .. src_h .. ") to canvas (" .. canvas_w .. "x" .. canvas_h .. ") scale=" .. string.format("%.3f", factor))
 end
 
 function remove_source_obj_from_scene(scene, source_name)
