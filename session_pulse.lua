@@ -2789,7 +2789,7 @@ function get_or_create_scene(scene_name)
     return nil, false
 end
 
-function populate_scene(scene, source_list, overlay_source, background_sources, music_source, alert_source)
+function populate_scene(scene, overlay_source, bar_source, background_sources, music_source, alert_source)
     if background_sources then
         for _, source in ipairs(background_sources) do
             if source then
@@ -2805,22 +2805,14 @@ function populate_scene(scene, source_list, overlay_source, background_sources, 
         add_source_obj_to_scene(scene, music_source, 0, 0)
     end
 
-    -- Add text sources
-    local positions = {
-        { source = source_list[1], x = 700, y = 300 },  -- Session
-        { source = source_list[2], x = 700, y = 350 },  -- Timer
-        { source = source_list[3], x = 700, y = 450 },  -- Count
-        { source = source_list[4], x = 700, y = 490 },  -- Progress
-        { source = source_list[5], x = 700, y = 530 },  -- Status
-    }
-    for _, p in ipairs(positions) do
-        if p.source then
-            add_source_obj_to_scene(scene, p.source, p.x, p.y)
-        end
-    end
-    -- Add overlay in top-left
+    -- Add ring overlay at top-left
     if overlay_source then
         add_source_obj_to_scene(scene, overlay_source, 30, 30)
+    end
+
+    -- Add bar overlay at top edge (full width)
+    if bar_source then
+        add_source_obj_to_scene(scene, bar_source, 0, 0)
     end
 
     if alert_source then
@@ -2829,7 +2821,7 @@ function populate_scene(scene, source_list, overlay_source, background_sources, 
 end
 
 
-local function add_sessionpulse_sources_to_active_scene(source_list, overlay_source, background_sources, music_source, alert_source)
+local function add_sessionpulse_sources_to_active_scene(overlay_source, bar_source, background_sources, music_source, alert_source)
     if type(obs.obs_frontend_get_current_scene) ~= "function" then
         log("Quick Setup: Active scene API unavailable, sources were created only")
         return false
@@ -2848,7 +2840,7 @@ local function add_sessionpulse_sources_to_active_scene(source_list, overlay_sou
         return false
     end
 
-    populate_scene(scene, source_list, overlay_source, background_sources, music_source, alert_source)
+    populate_scene(scene, overlay_source, bar_source, background_sources, music_source, alert_source)
 
     local scene_name = "current scene"
     if type(obs.obs_source_get_name) == "function" then
@@ -3020,52 +3012,13 @@ quick_setup = function(props, p)
     local created_count = 0
     local skipped_count = 0
     local source_handles = {}
-    local text_sources = {}
     local background_sources = {}
     local background_image_source = nil
     local background_video_source = nil
     local background_music_source = nil
     local alert_source = nil
 
-    local text_id = get_text_source_id()
-    local text_specs = {
-        { name = "SP Session",  text = "Focus",      size = 36 },
-        { name = "SP Timer",    text = "25:00",      size = 72 },
-        { name = "SP Count",    text = "0/6",        size = 24 },
-        { name = "SP Progress", text = "----------", size = 20 },
-        { name = "SP Status",   text = "",           size = 28 },
-    }
-
-    for i, spec in ipairs(text_specs) do
-        local settings = obs.obs_data_create()
-        obs.obs_data_set_string(settings, "text", spec.text)
-
-        local font = obs.obs_data_create()
-        obs.obs_data_set_string(font, "face", "Arial")
-        obs.obs_data_set_int(font, "size", spec.size)
-        obs.obs_data_set_int(font, "flags", 0)
-        obs.obs_data_set_obj(settings, "font", font)
-        obs.obs_data_release(font)
-        obs.obs_data_set_int(settings, "color", 0xFFFFFF)
-
-        local source, was_created = get_or_create_source(spec.name, text_id, settings)
-        obs.obs_data_release(settings)
-
-        if source then
-            text_sources[i] = source
-            table.insert(source_handles, source)
-            if was_created then
-                created_count = created_count + 1
-                log("Quick Setup: Created '" .. spec.name .. "'")
-            else
-                skipped_count = skipped_count + 1
-                log("Quick Setup: '" .. spec.name .. "' already exists")
-            end
-        else
-            log("Quick Setup: Failed to create '" .. spec.name .. "'")
-        end
-    end
-
+    -- ── 1. SP Control bridge ──
     if ensure_overlay_control() then
         created_count = created_count + 1
         log("Quick Setup: Created '" .. status_state.control_source_name .. "'")
@@ -3075,6 +3028,7 @@ quick_setup = function(props, p)
     end
     update_control_bridge_state(true)
 
+    -- ── 2. Ring overlay (SP Overlay — 400×400) ──
     local overlay_path = script_path() .. "timer_overlay.html"
     local overlay_settings = obs.obs_data_create()
     obs.obs_data_set_bool(overlay_settings, "is_local_file", true)
@@ -3101,6 +3055,34 @@ quick_setup = function(props, p)
         log("Quick Setup: Failed to create 'SP Overlay'")
     end
 
+    -- ── 3. Bar overlay (SP Overlay Bar — 1920×48) ──
+    local bar_path = script_path() .. "timer_overlay_bar.html"
+    local bar_settings = obs.obs_data_create()
+    obs.obs_data_set_bool(bar_settings, "is_local_file", true)
+    obs.obs_data_set_string(bar_settings, "local_file", bar_path)
+    obs.obs_data_set_int(bar_settings, "width", 1920)
+    obs.obs_data_set_int(bar_settings, "height", 48)
+    obs.obs_data_set_bool(bar_settings, "shutdown", true)
+    obs.obs_data_set_bool(bar_settings, "refreshnocache", true)
+
+    local bar_source, bar_created = get_or_create_source("SP Overlay Bar", "browser_source", bar_settings)
+    obs.obs_data_release(bar_settings)
+
+    if bar_source then
+        table.insert(source_handles, bar_source)
+        harden_sessionpulse_browser_source("SP Overlay Bar")
+        if bar_created then
+            created_count = created_count + 1
+            log("Quick Setup: Created 'SP Overlay Bar'")
+        else
+            skipped_count = skipped_count + 1
+            log("Quick Setup: 'SP Overlay Bar' already exists")
+        end
+    else
+        log("Quick Setup: Failed to create 'SP Overlay Bar'")
+    end
+
+    -- ── 4. Background sources ──
     local background_image_settings = obs.obs_data_create()
     obs.obs_data_set_string(background_image_settings, "file", "")
     local background_image_created
@@ -3146,6 +3128,7 @@ quick_setup = function(props, p)
         log("Quick Setup: Failed to create 'SP Background Video'")
     end
 
+    -- ── 5. Music + Alert ──
     local background_music_settings = obs.obs_data_create()
     obs.obs_data_set_bool(background_music_settings, "is_local_file", true)
     obs.obs_data_set_string(background_music_settings, "local_file", "")
@@ -3191,25 +3174,17 @@ quick_setup = function(props, p)
         log("Quick Setup: Failed to create 'SP Alert Sound'")
     end
 
+    -- ── 6. Add to active scene ──
     add_sessionpulse_sources_to_active_scene(
-        text_sources, overlay_source, background_sources, background_music_source, alert_source)
+        overlay_source, bar_source, background_sources, background_music_source, alert_source)
 
+    -- ── 7. Auto-assign settings ──
     if quick_setup_settings then
-        obs.obs_data_set_string(quick_setup_settings, "time_source", "SP Timer")
-        obs.obs_data_set_string(quick_setup_settings, "message_source", "SP Session")
-        obs.obs_data_set_string(quick_setup_settings, "focus_count_source", "SP Count")
-        obs.obs_data_set_string(quick_setup_settings, "progress_bar_source", "SP Progress")
-        obs.obs_data_set_string(quick_setup_settings, "status_source_name", "SP Status")
         obs.obs_data_set_string(quick_setup_settings, "background_media_source", "SP Background Image")
         obs.obs_data_set_string(quick_setup_settings, "background_music_source_name", "SP Background Music")
         obs.obs_data_set_string(quick_setup_settings, "alert_source_name", "SP Alert Sound")
         obs.obs_data_set_string(quick_setup_settings, "volume_source_name", "SP Background Music")
 
-        time_source = "SP Timer"
-        message_source = "SP Session"
-        focus_count_source = "SP Count"
-        progress_bar_source = "SP Progress"
-        status_state.source_name = "SP Status"
         background_media_source = "SP Background Image"
         background_music_source_name = "SP Background Music"
         alert_source_name = "SP Alert Sound"
@@ -3308,7 +3283,7 @@ function script_properties()
 
     -- ── Quick Setup ──
     obs.obs_properties_add_button(props, "quick_setup_button",
-        "🚀  Quick Setup (auto-create sources + overlay)", quick_setup)
+        "🚀  Quick Setup (create overlays + sources)", quick_setup)
 
     -- ── Controls ──
     obs.obs_properties_add_button(props, "start_button", "▶  Start", on_start_button_clicked)

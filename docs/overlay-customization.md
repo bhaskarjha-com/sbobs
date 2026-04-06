@@ -221,3 +221,53 @@ When overtime is enabled and the timer hits zero:
 - The glow intensifies
 
 This continues until you manually skip or stop the session.
+
+---
+
+## Manual Text Sources (Advanced)
+
+> **Quick Setup creates overlay sources only.** If you prefer individual text elements
+> for full positional control, create them manually using this guide.
+
+The overlays (ring + bar) display all session information automatically. However, power users
+who want to position each element independently can create **GDI+ Text** (or **FreeType 2**
+on Linux) sources and assign them in the SessionPulse script settings.
+
+### Source Names
+
+| Source Name | Content | Recommended Font Size |
+|------------|---------|----------------------|
+| `SP Session` | Current session type (e.g., "Focus") | 36 |
+| `SP Timer` | Countdown timer (e.g., "24:30") | 72 |
+| `SP Count` | Goal progress (e.g., "3/8") | 24 |
+| `SP Progress` | Text-based progress bar | 20 |
+| `SP Status` | Status messages | 28 |
+
+### Setup Steps
+
+1. In OBS, add a new **GDI+ Text** source (Windows) or **FreeType 2** source (Linux/Mac)
+2. Name it exactly as shown above (e.g., `SP Timer`)
+3. Set font, size, and color to your preference
+4. Position the source wherever you want on your canvas
+5. In the SessionPulse script settings, under **Source Assignment**, set the matching dropdown to your source name
+6. Repeat for each text element you want
+
+### Customization
+
+Each text source supports all standard OBS text source properties:
+- **Font**: Any installed font (monospace fonts like `JetBrains Mono` work great for timers)
+- **Color**: Any color via the OBS color picker
+- **Outline**: Enable outline for readability over busy backgrounds
+- **Shadow**: Add drop shadow for depth
+- **Opacity**: Adjust via OBS source filters
+- **Transform**: Resize, rotate, or crop via OBS Edit Transform
+
+### When to Use Text Sources vs Overlays
+
+| Use Case | Recommendation |
+|----------|---------------|
+| Standard streaming | **Overlays** — one source, everything included |
+| Custom layouts | **Text sources** — position each element independently |
+| Minimal setup | **Bar overlay** — single stripe at top/bottom |
+| Branded stream | **Text sources** — match your exact font and colors |
+| Quick setup | **Overlays** — one-click via Quick Setup |
