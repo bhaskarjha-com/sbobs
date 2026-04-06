@@ -161,12 +161,9 @@
 
 <script>
 const POLL_INTERVAL = 750;
-// Position can be set via:
-//   1. OBS Custom CSS:  body { --sp-position: bottom; }
-//   2. URL parameter:   ?position=bottom  (requires non-local-file mode)
+// Position can be set via OBS Custom CSS:  body { --sp-position: bottom; }
+// OBS injects Custom CSS AFTER scripts run, so we poll for it.
 const params = new URLSearchParams(window.location.search);
-const cssPosition = getComputedStyle(document.body).getPropertyValue('--sp-position').trim();
-const position = cssPosition || params.get('position') || 'top';
 
 const bar = document.getElementById('bar');
 const sessionIcon = document.getElementById('sessionIcon');
@@ -177,9 +174,21 @@ const sessionCounter = document.getElementById('sessionCounter');
 const pausedBadge = document.getElementById('pausedBadge');
 const transitionText = document.getElementById('transitionText');
 
-// Apply position
-bar.classList.remove('top', 'bottom');
-bar.classList.add(position);
+function applySPPosition() {
+  const cssPos = getComputedStyle(document.body).getPropertyValue('--sp-position').trim();
+  const pos = cssPos || params.get('position') || 'top';
+  bar.classList.remove('top', 'bottom');
+  bar.classList.add(pos);
+  return cssPos !== '';
+}
+applySPPosition();
+(function waitForOBSCustomCSS() {
+  let attempts = 0;
+  const timer = setInterval(() => {
+    attempts++;
+    if (applySPPosition() || attempts >= 20) clearInterval(timer);
+  }, 50);
+})();
 
 const ICONS = {
   'Focus': '📚', 'Short Break': '☕', 'Long Break': '🧘',

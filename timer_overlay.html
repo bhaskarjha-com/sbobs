@@ -218,35 +218,59 @@
 
 <script>
 // ── Configuration ──
-// Theme can be set via:
-//   1. OBS Custom CSS:  body { --sp-theme: neon; }
-//   2. URL parameter:   ?theme=neon  (requires non-local-file mode)
+// Theme and size can be set via OBS Custom CSS (works with Local File mode):
+//   body { --sp-theme: neon; --sp-size: 300; }
+//
+// OBS injects Custom CSS AFTER page scripts run, so we poll for it.
+// URL parameters (?theme=neon) also work as fallback for non-OBS use.
 const params = new URLSearchParams(window.location.search);
-const cssTheme = getComputedStyle(document.body).getPropertyValue('--sp-theme').trim();
-const THEME = cssTheme || params.get('theme') || 'default';
-const SIZE = parseInt(params.get('size')) || parseInt(getComputedStyle(document.body).getPropertyValue('--sp-size')) || 220;
 const SHOW_STATS = params.get('showStats') !== 'false';
 const SHOW_NEXT = params.get('showNext') !== 'false';
 const SHOW_CHAT = params.get('showChat') === 'true';
 const SHOW_STATUS = params.get('showStatus') !== 'false';
 const CUSTOM_FONT = params.get('font');
 
-// Apply theme
-if (THEME !== 'default') document.body.classList.add('theme-' + THEME);
+let _spThemeApplied = false;
 
-// Apply size
-if (SIZE !== 220) {
-  document.documentElement.style.setProperty('--size', SIZE + 'px');
-  document.body.style.width = SIZE + 'px';
-  document.body.style.height = SIZE + 'px';
+function applySPConfig() {
+  const style = getComputedStyle(document.body);
+  const cssTheme = style.getPropertyValue('--sp-theme').trim();
+  const cssSize = parseInt(style.getPropertyValue('--sp-size')) || 0;
+  const theme = cssTheme || params.get('theme') || 'default';
+  const size = cssSize || parseInt(params.get('size')) || 220;
+
+  if (theme !== 'default') {
+    document.body.classList.add('theme-' + theme);
+    _spThemeApplied = true;
+  }
+
+  if (size !== 220) {
+    document.documentElement.style.setProperty('--size', size + 'px');
+    document.body.style.width = size + 'px';
+    document.body.style.height = size + 'px';
+  }
+
+  return cssTheme !== '';
 }
 
-// Apply custom font
+// Try immediately (works if CSS is embedded)
+applySPConfig();
+
+// Re-check periodically until OBS Custom CSS is injected (~100ms after load)
+(function waitForOBSCustomCSS() {
+  let attempts = 0;
+  const timer = setInterval(() => {
+    attempts++;
+    if (applySPConfig() || _spThemeApplied || attempts >= 20) {
+      clearInterval(timer);
+    }
+  }, 50);
+})();
+
 if (CUSTOM_FONT) {
   document.body.style.fontFamily = `'${CUSTOM_FONT}', 'Segoe UI Variable', 'Segoe UI', 'Inter', sans-serif`;
 }
 
-// Apply custom colors from URL
 ['focus', 'short_break', 'long_break', 'stopwatch', 'countdown'].forEach(key => {
   const color = params.get('color_' + key);
   if (color) {
