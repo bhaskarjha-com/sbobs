@@ -1357,7 +1357,14 @@ async function loadStateViaObsSources() {
     status_active: !!controlState.status_active,
     status_message: controlState.status_message || '',
     status_until_epoch: Number(controlState.status_until_epoch) || 0,
-    ends_at: controlState.ends_at || ''
+    ends_at: controlState.ends_at || '',
+    session_label: controlState.session_label || '',
+    daily_focus_seconds: Number(controlState.daily_focus_seconds) || 0,
+    daily_goal_seconds: Number(controlState.daily_goal_seconds) || 0,
+    focus_streak: Number(controlState.focus_streak) || 0,
+    session_epoch: Number(controlState.session_epoch) || 0,
+    session_pause_total: Number(controlState.session_pause_total) || 0,
+    session_target_duration: Number(controlState.session_target_duration) || 0
   };
 }
 
