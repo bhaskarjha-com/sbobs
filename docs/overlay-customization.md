@@ -133,7 +133,7 @@ A horizontal progress bar for the edge of your stream. Shares the same color sys
 ### Basic Setup
 
 1. Add a **Browser Source** → select `timer_overlay_bar.html`
-2. Set Width: **1920** (your stream width), Height: **38**
+2. Set Width: **1920** (your stream width), Height: **48**
 3. Position at the top or bottom edge of your canvas
 
 ### Position
@@ -150,13 +150,14 @@ All properties are optional. Add them inside `body { }` in the Custom CSS field:
 
 | Property | Default | Description |
 |----------|---------|-------------|
-| `--sp-bar-height` | `38px` | Bar height |
-| `--sp-bar-bg` | dark (0.78 opacity) | Bar background color |
+| `--sp-bar-height` | `48px` | Bar height |
+| `--sp-bar-bg` | dark (0.82 opacity) | Bar background color |
 | `--sp-bar-blur` | `18px` | Bar backdrop blur strength |
 | `--sp-bar-progress-height` | `6px` | Progress bar track height |
-| `--sp-bar-label-size` | `0.72rem` | Session label font size |
-| `--sp-bar-time-size` | `1.05rem` | Timer text font size |
-| `--sp-bar-counter-size` | `0.65rem` | Session counter font size |
+| `--sp-bar-label-size` | `0.88rem` | Session label font size |
+| `--sp-bar-time-size` | `1.25rem` | Timer text font size |
+| `--sp-bar-counter-size` | `0.82rem` | Session counter font size |
+| `--sp-bar-next-size` | `0.78rem` | Next-up info font size |
 | `--sp-position` | `top` | Bar position: `top` or `bottom` |
 
 ### Visual Features

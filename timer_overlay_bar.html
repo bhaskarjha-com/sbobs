@@ -28,12 +28,12 @@
     --idle-color: #475569;
 
     /* Bar-specific */
-    --bar-height: var(--sp-bar-height, 38px);
-    --bar-bg: var(--sp-bar-bg, rgba(6, 10, 22, 0.78));
+    --bar-height: var(--sp-bar-height, 48px);
+    --bar-bg: var(--sp-bar-bg, rgba(6, 10, 22, 0.82));
     --bar-progress-h: var(--sp-bar-progress-height, 6px);
     --text-primary: #f1f5f9;
-    --text-secondary: rgba(241, 245, 249, 0.7);
-    --text-muted: rgba(241, 245, 249, 0.45);
+    --text-secondary: rgba(241, 245, 249, 0.85);
+    --text-muted: rgba(241, 245, 249, 0.7);
   }
 
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -54,8 +54,8 @@
     -webkit-backdrop-filter: blur(var(--sp-bar-blur, 18px));
     display: flex;
     align-items: center;
-    padding: 0 16px;
-    gap: 12px;
+    padding: 0 24px;
+    gap: 14px;
     opacity: 0;
     transform: translateY(-100%);
     transition: opacity 0.4s ease, transform 0.4s cubic-bezier(0.16, 1, 0.3, 1),
@@ -80,9 +80,9 @@
 
   /* ── Session icon ── */
   .session-icon {
-    font-size: 0.8rem;
-    width: 24px;
-    height: 24px;
+    font-size: 1rem;
+    width: 30px;
+    height: 30px;
     border-radius: 50%;
     display: flex;
     align-items: center;
@@ -93,13 +93,14 @@
 
   /* ── Session label ── */
   .session-label {
-    font-size: var(--sp-bar-label-size, 0.72rem);
-    font-weight: 600;
+    font-size: var(--sp-bar-label-size, 0.88rem);
+    font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 1.5px;
+    letter-spacing: 2px;
     color: var(--text-secondary);
     white-space: nowrap;
-    min-width: 45px;
+    min-width: 50px;
+    text-shadow: 0 1px 6px rgba(0, 0, 0, 0.4);
     transition: color 0.4s ease, text-shadow 0.4s ease;
   }
 
@@ -118,23 +119,25 @@
 
   /* ── Timer text ── */
   .time-text {
-    font-size: var(--sp-bar-time-size, 1.05rem);
+    font-size: var(--sp-bar-time-size, 1.25rem);
     font-weight: 700;
     color: var(--text-primary);
     font-variant-numeric: tabular-nums;
     letter-spacing: -0.5px;
     white-space: nowrap;
-    text-shadow: 0 1px 6px rgba(0, 0, 0, 0.3);
+    text-shadow: 0 1px 8px rgba(0, 0, 0, 0.4);
+    -webkit-text-stroke: 0.3px rgba(255, 255, 255, 0.15);
     transition: color 0.3s ease, text-shadow 0.3s ease;
   }
   .time-text.overtime {
     color: var(--overtime-color);
-    text-shadow: 0 0 12px rgba(239, 68, 68, 0.4);
+    text-shadow: 0 0 14px rgba(239, 68, 68, 0.5);
   }
 
   /* ── Progress bar ── */
   .progress-track {
     flex: 1;
+    max-width: 40%;
     height: var(--bar-progress-h);
     background: rgba(255, 255, 255, 0.08);
     border-radius: 99px;
@@ -152,20 +155,22 @@
 
   /* ── Session counter ── */
   .session-counter {
-    font-size: var(--sp-bar-counter-size, 0.65rem);
-    font-weight: 500;
+    font-size: var(--sp-bar-counter-size, 0.82rem);
+    font-weight: 600;
     color: var(--text-muted);
     white-space: nowrap;
     letter-spacing: 0.5px;
+    text-shadow: 0 1px 6px rgba(0, 0, 0, 0.4);
   }
 
   /* ── Next-up info ── */
   .next-info {
-    font-size: 0.65rem;
-    font-weight: 500;
+    font-size: var(--sp-bar-next-size, 0.78rem);
+    font-weight: 600;
     color: var(--text-muted);
     white-space: nowrap;
-    letter-spacing: 0.3px;
+    letter-spacing: 0.4px;
+    text-shadow: 0 1px 6px rgba(0, 0, 0, 0.4);
     opacity: 0;
     transition: opacity 0.4s ease;
     margin-left: auto;
