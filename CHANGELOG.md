@@ -21,6 +21,9 @@ All notable changes to SessionPulse are documented here.
 - **Asset organization** — `assets/` now has 3 subdirectories: `backgrounds/`, `screenshots/`, `sounds/`.
 
 ### Fixed
+- **CRITICAL: Dock showed "READY 00:00" while timer was running** — `process_overlay_control_command()` unconditionally cleared SP Control text to `""` every `script_tick`, even when the text contained state data (`kind:"state"`). The dock reads SP Control for live data, so it was always wiped before the dock could read it. Fix: check the `kind` field first — if it's `"state"`, return immediately without clearing.
+- **Dock data connection broken by CEF security** — Dock tried to `fetch(session_state.json)` which is blocked by Chromium Embedded Framework's `file://` same-origin policy. Fallback read text sources (`SP Timer`, `SP Session`, etc.) that no longer exist after the overlay-first refactor. Fix: restructured dock to use SP Control via WebSocket as primary data source. Returns a default idle state when SP Control is empty (timer idle).
+- **Background images didn't fill canvas** — `fit_source_to_canvas()` was completely disabled by a type guard `type(obs.obs_video_info) ~= "function"`. In OBS Lua, `obs.obs_video_info` is a userdata constructor, so `type()` returns `"userdata"`, not `"function"`. Guard always returned early, silently disabling all canvas fitting. Fix: changed to `if not obs.obs_video_info then return end`. Also rewrote fitting to use direct scale calculation (`max(canvas_w/src_w, canvas_h/src_h)`) instead of OBS bounds API.
 - **Lua test failures** — removed 5 stale assertions checking for auto-created text sources; added bar overlay placement test. Added `obs_video_info` nil guard in `fit_source_to_canvas` for test environments.
 - **Test counts** — Lua runtime queue: 79 → 75 (removed stale, added new); JS frontend: 104 (unchanged).
 

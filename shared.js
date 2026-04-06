@@ -1,6 +1,6 @@
 /**
  * SessionPulse — Shared Utilities (ES Module)
- * v5.4.1
+ * v6.0.0
  *
  * Canonical formatting, badge mapping, and state helpers for SessionPulse UIs.
  *
