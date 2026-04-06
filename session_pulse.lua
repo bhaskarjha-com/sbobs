@@ -1964,6 +1964,12 @@ function process_overlay_control_command()
     local raw_command = get_obs_source_text(status_state.control_source_name)
     if not raw_command or raw_command == "" then return false end
 
+    -- Check if this is a command vs state data
+    local kind = json_string_value(raw_command, "kind")
+
+    -- If it's state data (written by update_control_bridge_state), leave it alone
+    if kind == "state" then return false end
+
     local command = json_string_value(raw_command, "command")
     local nonce = json_string_value(raw_command, "nonce") or ""
     if nonce ~= "" and nonce == status_state.last_overlay_command_nonce then

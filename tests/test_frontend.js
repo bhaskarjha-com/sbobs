@@ -306,8 +306,8 @@ test('timer_dock.html: writes resume commands through SP Control', timerDockHtml
 test('timer_dock.html: parses control bridge state', timerDockHtml.includes("payload.kind !== 'state'"));
 test('timer_dock.html: reads SP Control during OBS fallback', timerDockHtml.includes("getObsInputText('SP Control')"));
 test('timer_dock.html: self-heals missing SP Control input', timerDockHtml.includes("CreateInput") && timerDockHtml.includes("CreateScene") && timerDockHtml.includes("GetInputKindList"));
-test('timer_dock.html: preserves rich fields during plain-source fallback', timerDockHtml.includes("const previousState = lastState || {}") && timerDockHtml.includes("stream_duration: Number(previousState.stream_duration) || 0"));
-test('timer_dock.html: merges live bridge state over JSON state', timerDockHtml.includes("const liveState = await loadStateViaObsSources();"));
+test('timer_dock.html: SP Control is primary data source', timerDockHtml.includes("const controlText = await getObsInputText('SP Control')") && timerDockHtml.includes("session_type: 'Ready'"));
+test('timer_dock.html: merges state file data when available', timerDockHtml.includes("const jsonState = await loadStateJson()") && timerDockHtml.includes("lastState = { ...jsonState, ...controlState }"));
 test('timer_dock.html: uses resume_available for Resume button', timerDockHtml.includes("const canResumePrevious = !!resume_available && !is_running;"));
 test('timer_dock.html: refreshes state immediately after WS connect', timerDockHtml.includes("refreshStateSnapshot().catch(() => {});"));
 test('timer_dock.html: does not trigger resume through OBS hotkey path', !timerDockHtml.includes("btnResumePrevious.addEventListener('click', () => triggerHotkey('session_pulse_resume_previous'));"));

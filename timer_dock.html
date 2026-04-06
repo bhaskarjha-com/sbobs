@@ -565,7 +565,7 @@
 </div>
 
 <div class="footer" id="footerText">
-  v5.4.1 · Hotkeys or buttons to control
+  v6.0.0 · Hotkeys or buttons to control
 </div>
 
 <script>
@@ -771,39 +771,54 @@ function setStateStatus(status, detail) {
   } else if (stateConnected) {
     footerText.textContent = 'Read-only mode: state file connected';
   } else {
-    footerText.textContent = 'v5.4.1 · Hotkeys or buttons to control';
+    footerText.textContent = 'v6.0.0 · Hotkeys or buttons to control';
   }
 }
 
 async function refreshStateSnapshot() {
+  // Strategy: try SP Control via WebSocket first (primary), then state file (fallback).
+  // SP Control is the most reliable source — it's always updated by the Lua script
+  // and doesn't suffer from CEF file:// security restrictions.
+
+  // Path 1: SP Control via WebSocket (primary)
   try {
-    lastState = await loadStateJson();
-    try {
-      const liveState = await loadStateViaObsSources();
-      lastState = { ...lastState, ...liveState };
-    } catch (liveError) {
-      // Keep the JSON state if live OBS source reconstruction is unavailable.
-    }
-    consecutiveFetchFailures = 0;
-    setStateStatus('connected', wsConnected ? 'Live state + dock controls connected' : `Read-only mode · ${preferredStateUrl}`);
-    update(lastState);
-    return;
-  } catch (error) {
-    try {
-      lastState = await loadStateViaObsSources();
+    const controlState = await loadStateViaObsSources();
+    if (controlState) {
+      // Merge with state file data if available (adds fields like session_label, daily_goal, focus_streak)
+      try {
+        const jsonState = await loadStateJson();
+        lastState = { ...jsonState, ...controlState };
+      } catch (fileError) {
+        lastState = controlState;
+      }
       consecutiveFetchFailures = 0;
-      setStateStatus('connected', 'State file unavailable · using OBS source fallback');
+      setStateStatus('connected', 'Live state via SP Control');
       update(lastState);
       return;
-    } catch (fallbackError) {
-      consecutiveFetchFailures += 1;
-      setStateStatus('disconnected', `State file unavailable · ${preferredStateUrl || 'session_state.json'}`);
-      if (consecutiveFetchFailures >= 2) {
-        lastState = null;
-        update(null);
-      } else {
-        update(lastState);
-      }
+    }
+  } catch (controlError) {
+    // SP Control unavailable — fall through to state file
+  }
+
+  // Path 2: State file fetch (fallback — works when served over HTTP, fails on file://)
+  try {
+    lastState = await loadStateJson();
+    consecutiveFetchFailures = 0;
+    setStateStatus('connected', `Read-only mode · ${preferredStateUrl}`);
+    update(lastState);
+    return;
+  } catch (fileError) {
+    // Both paths failed
+    consecutiveFetchFailures += 1;
+    const hint = wsConnected
+      ? 'SP Control source not found — run Quick Setup'
+      : 'WebSocket disconnected · enable OBS WebSocket Server';
+    setStateStatus('disconnected', hint);
+    if (consecutiveFetchFailures >= 2) {
+      lastState = null;
+      update(null);
+    } else {
+      update(lastState);
     }
   }
 }
@@ -1305,97 +1320,61 @@ function buildFallbackChatStatus(sessionText, timerText, countText, paused) {
 }
 
 async function loadStateViaObsSources() {
-  const previousState = lastState || {};
-  const [controlText, timerText, sessionText, countText, progressText, statusText] = await Promise.all([
-    getObsInputText('SP Control').catch(() => ''),
-    getObsInputText('SP Timer').catch(() => ''),
-    getObsInputText('SP Session').catch(() => ''),
-    getObsInputText('SP Count').catch(() => ''),
-    getObsInputText('SP Progress').catch(() => ''),
-    getObsInputText('SP Status').catch(() => '')
-  ]);
+  // Read SP Control text source — this contains the full state JSON
+  // written by the Lua script every tick via update_control_bridge_state().
+  const controlText = await getObsInputText('SP Control');
 
   const controlState = parseControlBridgeState(controlText);
-  if (controlState) {
-    const totalTime = Number(controlState.total_time) || 0;
-    const currentTime = Number(controlState.current_time) || 0;
+  if (!controlState) {
+    // SP Control exists but has no state JSON yet (timer idle, or command was just processed).
+    // Return a default idle state — the source IS available, just no active session.
     return {
-      is_running: !!controlState.is_running,
-      is_paused: !!controlState.is_paused,
-      resume_available: !!controlState.resume_available,
-      session_type: controlState.session_type || (controlState.is_running ? 'Focus' : 'Ready'),
-      current_time: currentTime,
-      total_time: totalTime,
-      elapsed_seconds: Math.max(0, totalTime - currentTime),
-      progress_percent: Number(controlState.progress_percent) || 0,
-      completed_focus_sessions: Number(controlState.completed_focus_sessions) || 0,
-      goal_sessions: Number(controlState.goal_sessions) || 0,
-      total_focus_seconds: Number(controlState.total_focus_seconds) || 0,
-      cycle_count: Number(controlState.cycle_count) || 0,
-      stream_duration: Number(controlState.stream_duration) || 0,
-      timer_mode: controlState.timer_mode || 'pomodoro',
-      custom_segment_name: controlState.custom_segment_name || '',
-      custom_segment_index: Number(controlState.custom_segment_index) || 0,
-      custom_segment_count: Number(controlState.custom_segment_count) || 0,
-      is_overtime: !!controlState.is_overtime,
-      overtime_seconds: Number(controlState.overtime_seconds) || 0,
-      next_session_type: controlState.next_session_type || '',
-      break_suggestion: controlState.break_suggestion || '',
-      show_transition: !!controlState.show_transition,
-      transition_message: controlState.transition_message || '',
-      chat_status_line: controlState.chat_status_line || buildFallbackChatStatus(sessionText, timerText, countText, !!controlState.is_paused),
-      status_active: !!controlState.status_active,
-      status_message: controlState.status_message || String(statusText || '').trim(),
-      status_until_epoch: Number(controlState.status_until_epoch) || 0,
-      ends_at: controlState.ends_at || ''
+      is_running: false, is_paused: false, resume_available: false,
+      session_type: 'Ready', current_time: 0, total_time: 0,
+      elapsed_seconds: 0, progress_percent: 0,
+      completed_focus_sessions: 0, goal_sessions: 0,
+      total_focus_seconds: 0, cycle_count: 0, stream_duration: 0,
+      timer_mode: 'pomodoro', custom_segment_name: '',
+      custom_segment_index: 0, custom_segment_count: 0,
+      is_overtime: false, overtime_seconds: 0,
+      next_session_type: '', break_suggestion: '',
+      show_transition: false, transition_message: '',
+      chat_status_line: '', status_active: false,
+      status_message: '', status_until_epoch: 0, ends_at: ''
     };
   }
 
-  const currentTime = parseTimerText(timerText);
-  const sessionType = inferSessionType(sessionText);
-  const counts = parseCountText(countText);
-  const progressPercent = parseProgressText(progressText);
-  const paused = /\bpaused\b/i.test(sessionText);
-  const statusMessage = String(statusText || '').trim();
-  const isRunning = currentTime != null && !!sessionText && !/\bready\b/i.test(sessionText);
-
-  if (!isRunning && !statusMessage && counts.goal === 0 && !sessionType) {
-    throw new Error('SessionPulse OBS sources did not provide usable dock data');
-  }
-
-  const totalTime = (currentTime != null && progressPercent > 0 && progressPercent < 100)
-    ? Math.round(currentTime / (1 - (progressPercent / 100)))
-    : 0;
-
+  const totalTime = Number(controlState.total_time) || 0;
+  const currentTime = Number(controlState.current_time) || 0;
   return {
-    is_running: isRunning,
-    is_paused: paused,
-    resume_available: !!previousState.resume_available,
-    session_type: sessionType || (isRunning ? 'Focus' : 'Ready'),
-    current_time: currentTime != null ? currentTime : 0,
+    is_running: !!controlState.is_running,
+    is_paused: !!controlState.is_paused,
+    resume_available: !!controlState.resume_available,
+    session_type: controlState.session_type || (controlState.is_running ? 'Focus' : 'Ready'),
+    current_time: currentTime,
     total_time: totalTime,
-    elapsed_seconds: totalTime > 0 ? Math.max(0, totalTime - currentTime) : 0,
-    progress_percent: progressPercent,
-    completed_focus_sessions: counts.completed,
-    goal_sessions: counts.goal,
-    total_focus_seconds: Number(previousState.total_focus_seconds) || 0,
-    cycle_count: Number(previousState.cycle_count) || 0,
-    stream_duration: Number(previousState.stream_duration) || 0,
-    timer_mode: sessionType === 'Countdown' ? 'countdown' : sessionType === 'Stopwatch' ? 'stopwatch' : 'pomodoro',
-    chat_status_line: buildFallbackChatStatus(sessionText, timerText, countText, paused),
-    status_active: statusMessage !== '',
-    status_message: statusMessage,
-    status_until_epoch: 0,
-    next_session_type: previousState.next_session_type || '',
-    break_suggestion: previousState.break_suggestion || '',
-    ends_at: previousState.ends_at || '',
-    show_transition: false,
-    transition_message: '',
-    custom_segment_name: previousState.custom_segment_name || '',
-    custom_segment_index: Number(previousState.custom_segment_index) || 0,
-    custom_segment_count: Number(previousState.custom_segment_count) || 0,
-    is_overtime: false,
-    overtime_seconds: 0
+    elapsed_seconds: Math.max(0, totalTime - currentTime),
+    progress_percent: Number(controlState.progress_percent) || 0,
+    completed_focus_sessions: Number(controlState.completed_focus_sessions) || 0,
+    goal_sessions: Number(controlState.goal_sessions) || 0,
+    total_focus_seconds: Number(controlState.total_focus_seconds) || 0,
+    cycle_count: Number(controlState.cycle_count) || 0,
+    stream_duration: Number(controlState.stream_duration) || 0,
+    timer_mode: controlState.timer_mode || 'pomodoro',
+    custom_segment_name: controlState.custom_segment_name || '',
+    custom_segment_index: Number(controlState.custom_segment_index) || 0,
+    custom_segment_count: Number(controlState.custom_segment_count) || 0,
+    is_overtime: !!controlState.is_overtime,
+    overtime_seconds: Number(controlState.overtime_seconds) || 0,
+    next_session_type: controlState.next_session_type || '',
+    break_suggestion: controlState.break_suggestion || '',
+    show_transition: !!controlState.show_transition,
+    transition_message: controlState.transition_message || '',
+    chat_status_line: controlState.chat_status_line || '',
+    status_active: !!controlState.status_active,
+    status_message: controlState.status_message || '',
+    status_until_epoch: Number(controlState.status_until_epoch) || 0,
+    ends_at: controlState.ends_at || ''
   };
 }
 
@@ -1725,7 +1704,7 @@ async function poll() {
     }
   }
 }
-setStateStatus('connecting', 'Connecting to session_state.json...');
+setStateStatus('connecting', 'Connecting to SP Control via WebSocket...');
 poll();
 window.addEventListener('beforeunload', () => {
   pollStopped = true;
