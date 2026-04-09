@@ -24,6 +24,9 @@ Desktop.ini
 # Manual Test
 test_walkthrough.md
 
+# Drafts
+drafts/
+
 # Test artifacts
 tests/session_state.json
 tests/session_state.json.tmp
